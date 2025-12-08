@@ -31,8 +31,6 @@ $tech_list = khokan_get_tech_list();
 $contact_feedback = khokan_get_contact_feedback();
 
 $brand_title = get_theme_mod('khokan_brand_title', 'Khokan Dev Studio');
-$brand_tagline = get_theme_mod('khokan_brand_tagline', 'Mobile • Flutter • React Native');
-$brand_initial = strtoupper(substr($brand_title, 0, 1));
 $hero_tagline = get_theme_mod('khokan_hero_tagline', 'Senior Mobile App Developer | Flutter & React Native Expert');
 $hero_subline = get_theme_mod('khokan_hero_subline', 'Building Scalable iOS & Android Apps for 6+ Years');
 $hero_cta_text = get_theme_mod('khokan_hero_cta_text', 'Get in Touch / Hire Me');
@@ -123,47 +121,25 @@ $social_icons = [
 $social_icons = array_values(array_filter($social_icons, function ($icon) {
     return !empty($icon['href']) && $icon['href'] !== '#';
 }));
-?>
-<!doctype html>
-<html <?php language_attributes(); ?>>
-<head>
-    <meta charset="<?php bloginfo('charset'); ?>">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <?php wp_head(); ?>
-</head>
-<body <?php body_class(); ?>>
-<?php wp_body_open(); ?>
-<div class="page">
-    <div class="page-glow"></div>
-    <?php
-    $hero_classes = ['section', 'hero'];
-    if ($hero_alignment === 'center') {
-        $hero_classes[] = 'hero-align-center';
-    }
 
-    $hero_style = '';
-    if ($hero_bg_type === 'solid') {
-        $hero_style = 'background:' . $hero_bg_color . ';';
-    } elseif ($hero_bg_type === 'gradient') {
-        $hero_style = 'background:linear-gradient(135deg, ' . $hero_bg_color . ' 0%, ' . $hero_bg_color2 . ' 100%);';
-    } elseif ($hero_bg_type === 'image' && $hero_bg_image) {
-        $hero_style = 'background:linear-gradient(135deg, rgba(5,13,44,0.8) 0%, rgba(11,18,64,0.8) 45%, rgba(5,10,36,0.8) 100%), url(' . esc_url($hero_bg_image) . ') center/cover no-repeat;';
-    }
-    ?>
-    <header class="<?php echo esc_attr(implode(' ', $hero_classes)); ?>" <?php echo $hero_style ? 'style="' . esc_attr($hero_style) . '"' : ''; ?>>
-        <div class="container hero-top">
-            <a class="brand" href="<?php echo esc_url(home_url('/')); ?>">
-                <span class="brand-emblem" aria-hidden="true">
-                    <span class="brand-glow"></span>
-                    <span class="brand-letter"><?php echo esc_html($brand_initial); ?></span>
-                </span>
-                <span class="brand-meta">
-                    <span class="brand-name"><?php echo esc_html($brand_title); ?></span>
-                    <span class="brand-tagline"><?php echo esc_html($brand_tagline); ?></span>
-                </span>
-            </a>
-        </div>
-        <div class="container hero-grid">
+get_header();
+
+$hero_classes = ['section', 'hero'];
+if ($hero_alignment === 'center') {
+    $hero_classes[] = 'hero-align-center';
+}
+
+$hero_style = '';
+if ($hero_bg_type === 'solid') {
+    $hero_style = 'background:' . $hero_bg_color . ';';
+} elseif ($hero_bg_type === 'gradient') {
+    $hero_style = 'background:linear-gradient(135deg, ' . $hero_bg_color . ' 0%, ' . $hero_bg_color2 . ' 100%);';
+} elseif ($hero_bg_type === 'image' && $hero_bg_image) {
+    $hero_style = 'background:linear-gradient(135deg, rgba(5,13,44,0.8) 0%, rgba(11,18,64,0.8) 45%, rgba(5,10,36,0.8) 100%), url(' . esc_url($hero_bg_image) . ') center/cover no-repeat;';
+}
+?>
+<section id="top" class="<?php echo esc_attr(implode(' ', $hero_classes)); ?>" <?php echo $hero_style ? 'style="' . esc_attr($hero_style) . '"' : ''; ?>>
+    <div class="container hero-grid">
             <div class="orbit-wrap">
                 <div
                     class="orbit-stage"
@@ -220,11 +196,11 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
                 </div>
             </div>
         </div>
-    </header>
+    </section>
 
     <main>
         <?php if ($about_enabled) : ?>
-            <section class="section about">
+            <section id="about" class="section about">
                 <div class="container">
                     <h2>About</h2>
                     <p class="about-text">
@@ -240,7 +216,7 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
         <?php endif; ?>
 
         <?php if (!empty($expertise_items) && $expertise_enabled) : ?>
-            <section class="section expertise">
+            <section id="expertise" class="section expertise">
                 <div class="container">
                     <div class="expertise-panel">
                         <div class="section-heading">
@@ -271,7 +247,7 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
         <?php endif; ?>
 
         <?php if (!empty($services_items) && $services_enabled) : ?>
-            <section class="section services">
+            <section id="services" class="section services">
                 <div class="container">
                     <div class="section-heading">
                         <h2><?php echo esc_html($services_title); ?></h2>
@@ -298,8 +274,61 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
             </section>
         <?php endif; ?>
 
+        <?php
+        $articles_query = new WP_Query([
+            'post_type' => 'post',
+            'posts_per_page' => 4,
+            'orderby' => 'comment_count',
+            'order' => 'DESC',
+            'ignore_sticky_posts' => 1,
+        ]);
+        $blog_page_id = get_option('page_for_posts');
+        $blog_page_link = $blog_page_id ? get_permalink($blog_page_id) : home_url('/blog/');
+        ?>
+        <?php if ($articles_query->have_posts()) : ?>
+            <section id="articles" class="section articles">
+                <div class="container">
+                    <div class="section-heading">
+                        <h2>Popular Tech Articles</h2>
+                        <p class="section-subtitle">Highlights from the blog: mobile, Flutter, React Native, and more.</p>
+                    </div>
+                    <div class="articles-grid">
+                        <?php
+                        while ($articles_query->have_posts()) :
+                            $articles_query->the_post();
+                            $article_thumb = get_the_post_thumbnail_url(get_the_ID(), 'medium');
+                            $article_cats = get_the_category();
+                            ?>
+                            <article class="article-card">
+                                <a class="article-thumb" href="<?php the_permalink(); ?>">
+                                    <?php if ($article_thumb) : ?>
+                                        <span class="article-img" style="background-image:url('<?php echo esc_url($article_thumb); ?>');"></span>
+                                    <?php else : ?>
+                                        <span class="article-img placeholder">✦</span>
+                                    <?php endif; ?>
+                                </a>
+                                <div class="article-meta">
+                                    <span class="article-date"><?php echo esc_html(get_the_date()); ?></span>
+                                    <?php if (!empty($article_cats)) : ?>
+                                        <span class="article-sep">·</span>
+                                        <span class="article-cat"><?php echo esc_html($article_cats[0]->name); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <h3 class="article-title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
+                                <p class="article-excerpt"><?php echo esc_html(wp_trim_words(get_the_excerpt(), 18, '…')); ?></p>
+                            </article>
+                        <?php endwhile; ?>
+                        <?php wp_reset_postdata(); ?>
+                    </div>
+                    <div class="articles-footer">
+                        <a class="ghost-btn" href="<?php echo esc_url($blog_page_link); ?>">View All Articles</a>
+                    </div>
+                </div>
+            </section>
+        <?php endif; ?>
+
         <?php if ($projects_enabled) : ?>
-            <section class="section projects">
+            <section id="projects" class="section projects">
                 <div class="container">
                     <h2><?php echo esc_html($projects_title); ?></h2>
                     <?php if (!empty($projects_intro)) : ?>
@@ -385,7 +414,7 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
         <?php endif; ?>
 
         <?php if ($contact_enabled) : ?>
-            <section class="section contact">
+            <section id="contact" class="section contact">
                 <div class="container contact-grid">
                     <div>
                         <h2><?php echo esc_html($contact_title); ?></h2>
@@ -449,7 +478,4 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
             </section>
         <?php endif; ?>
     </main>
-</div>
-<?php wp_footer(); ?>
-</body>
-</html>
+<?php get_footer(); ?>

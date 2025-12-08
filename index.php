@@ -22,7 +22,11 @@ $animation = [
     'float_y' => khokan_random_distance(10, 18),
 ];
 
-$projects = khokan_get_projects();
+$projects_data = khokan_get_projects();
+$projects = $projects_data['items'] ?? [];
+$projects_pagination = $projects_data['pagination'] ?? ['mode' => 'all', 'current' => 1, 'total' => 1, 'has_more' => false];
+$project_filters = $projects_data['filters'] ?? [];
+$active_project_tag = $projects_data['active_tag'] ?? '';
 $tech_list = khokan_get_tech_list();
 $contact_feedback = khokan_get_contact_feedback();
 
@@ -40,42 +44,20 @@ $whatsapp_link = get_theme_mod('khokan_social_whatsapp', '');
 $telegram_link = get_theme_mod('khokan_social_telegram', '');
 $hero_image_id = get_theme_mod('khokan_hero_image');
 $hero_img = $hero_image_id ? wp_get_attachment_image_url($hero_image_id, 'large') : get_template_directory_uri() . '/assets/img/user-img.png';
+$skills_center_image_id = get_theme_mod('khokan_skills_center_image');
+$skills_center_img = $skills_center_image_id ? wp_get_attachment_image_url($skills_center_image_id, 'large') : $hero_img;
+$skills_center_size = (int) get_theme_mod('khokan_skills_center_size', 78);
+$skills_center_size = max(30, min(120, $skills_center_size));
+$hero_alignment = get_theme_mod('khokan_hero_alignment', 'left');
+$hero_bg_type = get_theme_mod('khokan_hero_bg_type', 'gradient');
+$hero_bg_color = sanitize_hex_color(get_theme_mod('khokan_hero_bg_color', '#050d2c')) ?: '#050d2c';
+$hero_bg_color2 = sanitize_hex_color(get_theme_mod('khokan_hero_bg_color2', '#0b1240')) ?: '#0b1240';
+$hero_bg_image_id = get_theme_mod('khokan_hero_bg_image');
+$hero_bg_image = $hero_bg_image_id ? wp_get_attachment_image_url($hero_bg_image_id, 'large') : '';
 
-$skill_planets = [
-    [
-        'name' => 'Flutter',
-        'class' => 'flutter',
-        'orbit' => 240,
-        'duration' => 8.5,
-        'size' => 62,
-        'icon' => get_template_directory_uri() . '/assets/img/flutter-logo.png',
-    ],
-    [
-        'name' => 'React Native',
-        'class' => 'react',
-        'orbit' => 300,
-        'duration' => 9.5,
-        'size' => 58,
-        'icon' => get_template_directory_uri() . '/assets/img/react.png',
-    ],
-    [
-        'name' => 'Android',
-        'class' => 'android',
-        'orbit' => 360,
-        'duration' => 7.5,
-        'size' => 64,
-        'icon' => get_template_directory_uri() . '/assets/img/android.png',
-    ],
-    [
-        'name' => 'iOS',
-        'class' => 'ios',
-        'orbit' => 430,
-        'duration' => 10,
-        'size' => 56,
-        'icon' => get_template_directory_uri() . '/assets/img/apple.png',
-    ],
-];
+$skill_planets = function_exists('khokan_get_skill_items') ? khokan_get_skill_items() : [];
 
+$about_enabled = get_theme_mod('khokan_about_enabled', 1);
 $about_text = get_theme_mod(
     'khokan_about_text',
     'I\'m Md Khokanuzzaman, a software engineer specializing in Flutter, React Native, and cross-platform mobile apps. Over 6+ years, I\'ve built & shipped healthcare and commerce apps used by'
@@ -84,9 +66,21 @@ $about_text = get_theme_mod(
 $contact_title = get_theme_mod('khokan_contact_title', 'Contact & Lead Generation');
 $contact_button_text = get_theme_mod('khokan_contact_button_text', 'Send Message');
 $contact_email = get_theme_mod('khokan_contact_email', get_option('admin_email'));
+$contact_enabled = get_theme_mod('khokan_contact_enabled', 1);
+
+$services_title = get_theme_mod('khokan_services_title', 'My Services');
+$services_description = get_theme_mod('khokan_services_description', '');
+$services_items = function_exists('khokan_get_services_items') ? khokan_get_services_items() : [];
+$services_enabled = get_theme_mod('khokan_services_enabled', 1);
+
+$expertise_title = get_theme_mod('khokan_expertise_title', 'My Areas of Expertise');
+$expertise_description = get_theme_mod('khokan_expertise_description', '');
+$expertise_items = function_exists('khokan_get_expertise_items') ? khokan_get_expertise_items() : [];
+$expertise_enabled = get_theme_mod('khokan_expertise_enabled', 1);
 
 $projects_title = get_theme_mod('khokan_projects_title', 'Projects');
 $projects_intro = get_theme_mod('khokan_projects_intro', '');
+$projects_enabled = get_theme_mod('khokan_projects_enabled', 1);
 
 $social_icons = [
     [
@@ -141,7 +135,22 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
 <?php wp_body_open(); ?>
 <div class="page">
     <div class="page-glow"></div>
-    <header class="section hero">
+    <?php
+    $hero_classes = ['section', 'hero'];
+    if ($hero_alignment === 'center') {
+        $hero_classes[] = 'hero-align-center';
+    }
+
+    $hero_style = '';
+    if ($hero_bg_type === 'solid') {
+        $hero_style = 'background:' . $hero_bg_color . ';';
+    } elseif ($hero_bg_type === 'gradient') {
+        $hero_style = 'background:linear-gradient(135deg, ' . $hero_bg_color . ' 0%, ' . $hero_bg_color2 . ' 100%);';
+    } elseif ($hero_bg_type === 'image' && $hero_bg_image) {
+        $hero_style = 'background:linear-gradient(135deg, rgba(5,13,44,0.8) 0%, rgba(11,18,64,0.8) 45%, rgba(5,10,36,0.8) 100%), url(' . esc_url($hero_bg_image) . ') center/cover no-repeat;';
+    }
+    ?>
+    <header class="<?php echo esc_attr(implode(' ', $hero_classes)); ?>" <?php echo $hero_style ? 'style="' . esc_attr($hero_style) . '"' : ''; ?>>
         <div class="container hero-top">
             <a class="brand" href="<?php echo esc_url(home_url('/')); ?>">
                 <span class="brand-emblem" aria-hidden="true">
@@ -173,7 +182,7 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
 
                     <div class="sun">
                         <div class="sun-core">
-                            <img src="<?php echo esc_url($hero_img); ?>" alt="Portrait of Khokanuzzanierkan">
+                            <img src="<?php echo esc_url($skills_center_img); ?>" alt="<?php echo esc_attr($brand_title); ?>">
                         </div>
                     </div>
 
@@ -181,10 +190,11 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
                         <div
                             class="orbit orbit-<?php echo esc_attr($planet['class']); ?>"
                             style="<?php echo esc_attr(sprintf(
-                                '--orbit-size:%dpx; --orbit-duration:%ss; --planet-size:%dpx;',
+                                '--orbit-size:%dpx; --orbit-duration:%ss; --planet-size:%dpx; --orbit-delay:%ss;',
                                 $planet['orbit'],
                                 $planet['duration'],
-                                $planet['size']
+                                $planet['size'],
+                                isset($planet['delay']) ? $planet['delay'] : 0
                             )); ?>"
                         >
                             <div class="orbit-path"></div>
@@ -213,114 +223,231 @@ $social_icons = array_values(array_filter($social_icons, function ($icon) {
     </header>
 
     <main>
-        <section class="section about">
-            <div class="container">
-                <h2>About</h2>
-                <p class="about-text">
-                    <?php echo esc_html($about_text); ?>
-                </p>
-                <ul class="list">
-                    <?php foreach ($tech_list as $item) : ?>
-                        <li><?php echo esc_html($item); ?></li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
-        </section>
+        <?php if ($about_enabled) : ?>
+            <section class="section about">
+                <div class="container">
+                    <h2>About</h2>
+                    <p class="about-text">
+                        <?php echo esc_html($about_text); ?>
+                    </p>
+                    <ul class="list">
+                        <?php foreach ($tech_list as $item) : ?>
+                            <li><?php echo esc_html($item); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </section>
+        <?php endif; ?>
 
-        <section class="section projects">
-            <div class="container">
-                <h2><?php echo esc_html($projects_title); ?></h2>
-                <?php if (!empty($projects_intro)) : ?>
-                    <p class="projects-intro"><?php echo esc_html($projects_intro); ?></p>
-                <?php endif; ?>
-                <div class="projects-grid">
-                    <?php foreach ($projects as $project) : ?>
-                        <div class="project-card">
-                            <div class="project-icon <?php echo esc_attr($project['accent']); ?>">
-                                <?php if (!empty($project['image'])) : ?>
-                                    <img src="<?php echo esc_url($project['image']); ?>" alt="<?php echo esc_attr($project['title']); ?>" class="project-logo">
-                                <?php else : ?>
-                                    <span>★</span>
+        <?php if (!empty($expertise_items) && $expertise_enabled) : ?>
+            <section class="section expertise">
+                <div class="container">
+                    <div class="expertise-panel">
+                        <div class="section-heading">
+                            <h2><?php echo esc_html($expertise_title); ?></h2>
+                            <?php if (!empty($expertise_description)) : ?>
+                                <p class="section-subtitle"><?php echo esc_html($expertise_description); ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <div class="expertise-grid">
+                            <?php foreach ($expertise_items as $item) : ?>
+                                <?php
+                                $tone = isset($item['style']) ? $item['style'] : 'default';
+                                $classes = ['expertise-card'];
+                                if ($tone === 'accent') {
+                                    $classes[] = 'is-accent';
+                                } else {
+                                    $classes[] = 'is-muted';
+                                }
+                                ?>
+                                <div class="<?php echo esc_attr(implode(' ', $classes)); ?>">
+                                    <span class="expertise-label"><?php echo esc_html($item['label']); ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if (!empty($services_items) && $services_enabled) : ?>
+            <section class="section services">
+                <div class="container">
+                    <div class="section-heading">
+                        <h2><?php echo esc_html($services_title); ?></h2>
+                        <?php if (!empty($services_description)) : ?>
+                            <p class="section-subtitle"><?php echo esc_html($services_description); ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <div class="services-grid">
+                        <?php foreach ($services_items as $service) : ?>
+                            <div class="service-card">
+                                <?php if (!empty($service['icon'])) : ?>
+                                    <div class="service-icon">
+                                        <img src="<?php echo esc_url($service['icon']); ?>" alt="<?php echo esc_attr($service['title']); ?>">
+                                    </div>
+                                <?php endif; ?>
+                                <h3><?php echo esc_html($service['title']); ?></h3>
+                                <?php if (!empty($service['description'])) : ?>
+                                    <p class="service-copy"><?php echo esc_html($service['description']); ?></p>
                                 <?php endif; ?>
                             </div>
-                            <h3><?php echo esc_html($project['title']); ?></h3>
-                            <p><?php echo esc_html($project['description']); ?></p>
-                            <a class="ghost-btn" href="<?php echo esc_url($project['link'] ?? '#'); ?>" target="_blank" rel="noopener">
-                                <?php echo esc_html($project['cta']); ?>
-                            </a>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-                <div class="projects-footer">
-                    <a class="primary-btn" href="<?php echo esc_url(home_url('/projects/')); ?>">
-                        <?php echo esc_html($projects_footer_cta); ?>
-                    </a>
-                </div>
-            </div>
-        </section>
-
-        <section class="section contact">
-            <div class="container contact-grid">
-                <div>
-                    <h2><?php echo esc_html($contact_title); ?></h2>
-                    <form class="contact-form" method="post">
-                        <?php if ($contact_feedback) : ?>
-                            <div class="form-feedback <?php echo esc_attr($contact_feedback['status']); ?>">
-                                <?php echo esc_html($contact_feedback['message']); ?>
-                            </div>
-                        <?php endif; ?>
-                        <?php wp_nonce_field('khokan_contact_nonce', 'khokan_contact_nonce'); ?>
-                        <input type="hidden" name="khokan_contact_submit" value="1">
-                        <div class="input-row">
-                            <input type="text" placeholder="Name" name="name" value="<?php echo isset($_POST['name']) ? esc_attr(wp_unslash($_POST['name'])) : ''; ?>">
-                            <input type="email" placeholder="Email" name="email" value="<?php echo isset($_POST['email']) ? esc_attr(wp_unslash($_POST['email'])) : ''; ?>">
-                        </div>
-                        <textarea rows="3" placeholder="Project Details" name="message"><?php echo isset($_POST['message']) ? esc_textarea(wp_unslash($_POST['message'])) : ''; ?></textarea>
-                        <button type="submit" class="primary-btn"><?php echo esc_html($contact_button_text); ?></button>
-                    </form>
-                </div>
-
-                <div class="social-block">
-                    <h3>Social Media</h3>
-                    <div class="social-icons">
-                        <?php foreach ($social_icons as $icon) : ?>
-                            <a class="social-btn" href="<?php echo esc_url($icon['href']); ?>" aria-label="<?php echo esc_attr($icon['name']); ?>">
-                                <svg viewBox="0 0 24 24" aria-hidden="true" role="img">
-                                    <path d="<?php echo esc_attr($icon['path']); ?>"/>
-                                </svg>
-                            </a>
                         <?php endforeach; ?>
                     </div>
-                    <p class="direct-email">
-                        Direct email:<br>
-                        <a href="mailto:<?php echo esc_attr($contact_email); ?>"><?php echo esc_html($contact_email); ?></a>
-                    </p>
-                    <?php if ($whatsapp_link || $telegram_link) : ?>
-                        <div class="direct-contact">
-                            <h4>Direct Contact</h4>
-                            <div class="contact-chips">
-                                <?php if ($whatsapp_link) : ?>
-                                    <a class="contact-chip whatsapp" href="<?php echo esc_url($whatsapp_link); ?>" target="_blank" rel="noopener">
-                                        <span class="chip-icon">
-                                            <svg viewBox="0 0 24 24" aria-hidden="true" role="img"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.654-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.074-.148-.669-1.611-.916-2.206-.242-.58-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"></path><path d="M20.52 3.48C18.24 1.2 15.24 0 12 0 5.37 0 0 5.37 0 12c0 2.115.55 4.177 1.6 6l-1.05 3.84 3.93-1.03C6.29 22.424 9.09 23 12 23c6.63 0 12-5.37 12-12 0-3.24-1.2-6.24-3.48-8.52zM12 21c-2.592 0-5.046-.85-7.093-2.46l-.507-.38-2.33.61.623-2.28-.38-.58C1.434 14.927 1 13.48 1 12 1 6.486 5.486 2 11 2c2.89 0 5.603 1.127 7.64 3.164C20.673 7.2 21.8 9.91 21.8 12.8c0 5.514-4.486 10-9.8 10z"></path></svg>
-                                        </span>
-                                        <span class="chip-label">WhatsApp</span>
-                                    </a>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($projects_enabled) : ?>
+            <section class="section projects">
+                <div class="container">
+                    <h2><?php echo esc_html($projects_title); ?></h2>
+                    <?php if (!empty($projects_intro)) : ?>
+                        <p class="projects-intro"><?php echo esc_html($projects_intro); ?></p>
+                    <?php endif; ?>
+                    <?php if (!empty($project_filters)) : ?>
+                        <div class="project-filters">
+                            <a class="filter-chip <?php echo $active_project_tag ? '' : 'active'; ?>" href="<?php echo esc_url(remove_query_arg('project_tag')); ?>">All</a>
+                            <?php foreach ($project_filters as $filter) : ?>
+                                <a class="filter-chip <?php echo ($active_project_tag === $filter['slug']) ? 'active' : ''; ?>"
+                                   href="<?php echo esc_url(add_query_arg('project_tag', $filter['slug'])); ?>">
+                                    <?php echo esc_html($filter['name']); ?>
+                                    <span class="filter-count"><?php echo (int) $filter['count']; ?></span>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                    <div class="projects-grid">
+                        <?php foreach ($projects as $project) : ?>
+                            <div class="project-card">
+                                <div class="project-icon <?php echo esc_attr($project['accent']); ?>">
+                                    <?php if (!empty($project['image'])) : ?>
+                                        <img src="<?php echo esc_url($project['image']); ?>" alt="<?php echo esc_attr($project['title']); ?>" class="project-logo">
+                                    <?php else : ?>
+                                        <span>★</span>
+                                    <?php endif; ?>
+                                </div>
+                                <h3><?php echo esc_html($project['title']); ?></h3>
+                                <p><?php echo esc_html($project['description']); ?></p>
+                                <?php if (!empty($project['role']) || !empty($project['duration'])) : ?>
+                                    <p class="project-meta">
+                                        <?php if (!empty($project['role'])) : ?>
+                                            <span class="meta-chip"><?php echo esc_html($project['role']); ?></span>
+                                        <?php endif; ?>
+                                        <?php if (!empty($project['duration'])) : ?>
+                                            <span class="meta-chip"><?php echo esc_html($project['duration']); ?></span>
+                                        <?php endif; ?>
+                                    </p>
                                 <?php endif; ?>
-                                <?php if ($telegram_link) : ?>
-                                    <a class="contact-chip telegram" href="<?php echo esc_url($telegram_link); ?>" target="_blank" rel="noopener">
-                                        <span class="chip-icon">
-                                            <svg viewBox="0 0 24 24" aria-hidden="true" role="img"><path d="M9.95 14.56 9.7 18.62c.4 0 .57-.17.78-.37l1.87-1.8 3.88 2.84c.71.4 1.22.19 1.41-.66l2.55-11.97c.23-.98-.36-1.37-1.04-1.13L2.43 10.6c-1 .39-.98.95-.17 1.2l4.6 1.44 10.66-6.7c.5-.33.95-.15.58.18z"></path></svg>
-                                        </span>
-                                        <span class="chip-label">Telegram</span>
+                                <?php if (!empty($project['stack'])) : ?>
+                                    <div class="project-stack">
+                                        <?php foreach ($project['stack'] as $tech) : ?>
+                                            <span class="stack-chip"><?php echo esc_html($tech); ?></span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if (!empty($project['result'])) : ?>
+                                    <p class="project-result"><?php echo esc_html($project['result']); ?></p>
+                                <?php endif; ?>
+                                <a class="ghost-btn" href="<?php echo esc_url($project['link'] ?? '#'); ?>" target="_blank" rel="noopener">
+                                    <?php echo esc_html($project['cta']); ?>
+                                </a>
+                                <?php if (!empty($project['secondary_cta']) && !empty($project['secondary_link'])) : ?>
+                                    <a class="ghost-btn secondary-cta" href="<?php echo esc_url($project['secondary_link']); ?>" target="_blank" rel="noopener">
+                                        <?php echo esc_html($project['secondary_cta']); ?>
                                     </a>
                                 <?php endif; ?>
                             </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php if (!empty($projects_footer_cta)) : ?>
+                        <div class="projects-footer">
+                            <?php if ($projects_pagination['mode'] === 'load_more' && $projects_pagination['has_more']) : ?>
+                                <a class="primary-btn" href="<?php echo esc_url(add_query_arg('proj_page', $projects_pagination['current'] + 1)); ?>">
+                                    Load More
+                                </a>
+                            <?php elseif ($projects_pagination['mode'] === 'paginate' && $projects_pagination['total'] > 1) : ?>
+                                <div class="pagination">
+                                    <?php for ($p = 1; $p <= (int) $projects_pagination['total']; $p++) : ?>
+                                        <a class="page-btn <?php echo $p === (int) $projects_pagination['current'] ? 'active' : ''; ?>"
+                                           href="<?php echo esc_url(add_query_arg('proj_page', $p)); ?>"><?php echo (int) $p; ?></a>
+                                    <?php endfor; ?>
+                                </div>
+                            <?php else : ?>
+                                <a class="primary-btn" href="<?php echo esc_url(home_url('/projects/')); ?>">
+                                    <?php echo esc_html($projects_footer_cta); ?>
+                                </a>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
                 </div>
-            </div>
-        </section>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($contact_enabled) : ?>
+            <section class="section contact">
+                <div class="container contact-grid">
+                    <div>
+                        <h2><?php echo esc_html($contact_title); ?></h2>
+                        <form class="contact-form" method="post">
+                            <?php if ($contact_feedback) : ?>
+                                <div class="form-feedback <?php echo esc_attr($contact_feedback['status']); ?>">
+                                    <?php echo esc_html($contact_feedback['message']); ?>
+                                </div>
+                            <?php endif; ?>
+                            <?php wp_nonce_field('khokan_contact_nonce', 'khokan_contact_nonce'); ?>
+                            <input type="hidden" name="khokan_contact_submit" value="1">
+                            <div class="input-row">
+                                <input type="text" placeholder="Name" name="name" value="<?php echo isset($_POST['name']) ? esc_attr(wp_unslash($_POST['name'])) : ''; ?>">
+                                <input type="email" placeholder="Email" name="email" value="<?php echo isset($_POST['email']) ? esc_attr(wp_unslash($_POST['email'])) : ''; ?>">
+                            </div>
+                            <textarea rows="3" placeholder="Project Details" name="message"><?php echo isset($_POST['message']) ? esc_textarea(wp_unslash($_POST['message'])) : ''; ?></textarea>
+                            <button type="submit" class="primary-btn"><?php echo esc_html($contact_button_text); ?></button>
+                        </form>
+                    </div>
+
+                    <div class="social-block">
+                        <h3>Social Media</h3>
+                        <div class="social-icons">
+                            <?php foreach ($social_icons as $icon) : ?>
+                                <a class="social-btn" href="<?php echo esc_url($icon['href']); ?>" aria-label="<?php echo esc_attr($icon['name']); ?>">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" role="img">
+                                        <path d="<?php echo esc_attr($icon['path']); ?>"/>
+                                    </svg>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
+                        <p class="direct-email">
+                            Direct email:<br>
+                            <a href="mailto:<?php echo esc_attr($contact_email); ?>"><?php echo esc_html($contact_email); ?></a>
+                        </p>
+                        <?php if ($whatsapp_link || $telegram_link) : ?>
+                            <div class="direct-contact">
+                                <h4>Direct Contact</h4>
+                                <div class="contact-chips">
+                                    <?php if ($whatsapp_link) : ?>
+                                        <a class="contact-chip whatsapp" href="<?php echo esc_url($whatsapp_link); ?>" target="_blank" rel="noopener">
+                                            <span class="chip-icon">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" role="img"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.198.297-.767.967-.94 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.654-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.074-.148-.669-1.611-.916-2.206-.242-.58-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.262.489 1.694.626.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"></path><path d="M20.52 3.48C18.24 1.2 15.24 0 12 0 5.37 0 0 5.37 0 12c0 2.115.55 4.177 1.6 6l-1.05 3.84 3.93-1.03C6.29 22.424 9.09 23 12 23c6.63 0 12-5.37 12-12 0-3.24-1.2-6.24-3.48-8.52zM12 21c-2.592 0-5.046-.85-7.093-2.46l-.507-.38-2.33.61.623-2.28-.38-.58C1.434 14.927 1 13.48 1 12 1 6.486 5.486 2 11 2c2.89 0 5.603 1.127 7.64 3.164C20.673 7.2 21.8 9.91 21.8 12.8c0 5.514-4.486 10-9.8 10z"></path></svg>
+                                            </span>
+                                            <span class="chip-label">WhatsApp</span>
+                                        </a>
+                                    <?php endif; ?>
+                                    <?php if ($telegram_link) : ?>
+                                        <a class="contact-chip telegram" href="<?php echo esc_url($telegram_link); ?>" target="_blank" rel="noopener">
+                                            <span class="chip-icon">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" role="img"><path d="M9.95 14.56 9.7 18.62c.4 0 .57-.17.78-.37l1.87-1.8 3.88 2.84c.71.4 1.22.19 1.41-.66l2.55-11.97c.23-.98-.36-1.37-1.04-1.13L2.43 10.6c-1 .39-.98.95-.17 1.2l4.6 1.44 10.66-6.7c.5-.33.95-.15.58.18z"></path></svg>
+                                            </span>
+                                            <span class="chip-label">Telegram</span>
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </section>
+        <?php endif; ?>
     </main>
 </div>
 <?php wp_footer(); ?>

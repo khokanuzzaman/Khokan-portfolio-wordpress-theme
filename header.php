@@ -13,7 +13,7 @@ $header_menu = wp_nav_menu([
     'menu_class' => 'hero-menu',
     'fallback_cb' => false,
     'echo' => false,
-    'depth' => 1,
+    'depth' => 2,
 ]);
 
 if (!$header_menu) {

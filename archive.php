@@ -1,36 +1,67 @@
 <?php
 /**
- * Template Name: Blog Posts
- * Description: Use this template to show the blog feed on a dedicated page.
+ * Archive template for categories, tags, and taxonomies.
  */
 
 get_header();
 
-$subtitle = get_the_excerpt() ?: 'Mobile engineering, product lessons, and shipping better apps.';
-$paged = max(1, get_query_var('paged'), get_query_var('page'));
-
-$posts_query = new WP_Query([
-    'post_type' => 'post',
-    'post_status' => 'publish',
-    'paged' => $paged,
-]);
 $topics = get_categories([
     'orderby' => 'count',
     'order' => 'DESC',
     'number' => 8,
 ]);
+
+$archive_title = get_the_archive_title();
+$eyebrow_label = 'Archive';
+$archive_subtitle = wp_strip_all_tags(get_the_archive_description());
+
+if (is_category()) {
+    $archive_title = single_cat_title('', false);
+    $eyebrow_label = 'Category';
+    if (!$archive_subtitle) {
+        $archive_subtitle = sprintf('Articles curated under %s.', $archive_title);
+    }
+} elseif (is_tag()) {
+    $archive_title = single_tag_title('', false);
+    $eyebrow_label = 'Tag';
+    if (!$archive_subtitle) {
+        $archive_subtitle = sprintf('Insights grouped by %s.', $archive_title);
+    }
+} elseif (is_tax()) {
+    $term = get_queried_object();
+    $taxonomy = get_taxonomy($term->taxonomy);
+    $eyebrow_label = $taxonomy->labels->singular_name ?? 'Collection';
+    $archive_title = $term->name ?? $archive_title;
+    if (!$archive_subtitle) {
+        $archive_subtitle = sprintf('Stories curated under %s.', $archive_title);
+    }
+} else {
+    if (!$archive_subtitle) {
+        $archive_subtitle = 'Latest articles and updates.';
+    }
+}
+
+global $wp_query;
+$post_count = (int) ($wp_query->found_posts ?? 0);
 ?>
 <main>
     <section class="section blog-hero">
         <div class="container blog-hero__grid">
             <div>
-                <p class="eyebrow">Insights & Updates</p>
-                <h1 class="blog-title"><?php the_title(); ?></h1>
-                <p class="section-subtitle"><?php echo esc_html($subtitle); ?></p>
+                <p class="eyebrow"><?php echo esc_html($eyebrow_label); ?></p>
+                <h1 class="blog-title"><?php echo esc_html($archive_title); ?></h1>
+                <p class="section-subtitle"><?php echo esc_html($archive_subtitle); ?></p>
                 <?php if (!empty($topics)) : ?>
                     <div class="blog-chips">
                         <?php foreach ($topics as $topic) : ?>
-                            <a class="blog-chip" href="<?php echo esc_url(get_category_link($topic->term_id)); ?>">
+                            <?php
+                            $is_current = is_category($topic->term_id);
+                            $chip_classes = ['blog-chip'];
+                            if ($is_current) {
+                                $chip_classes[] = 'is-active';
+                            }
+                            ?>
+                            <a class="<?php echo esc_attr(implode(' ', $chip_classes)); ?>" href="<?php echo esc_url(get_category_link($topic->term_id)); ?>">
                                 <?php echo esc_html($topic->name); ?>
                             </a>
                         <?php endforeach; ?>
@@ -39,7 +70,7 @@ $topics = get_categories([
             </div>
             <div class="blog-hero__meta">
                 <p class="muted">Published posts</p>
-                <div class="hero-count"><?php echo (int) wp_count_posts()->publish; ?>+</div>
+                <div class="hero-count"><?php echo esc_html($post_count); ?></div>
                 <p class="muted">Curated for Flutter, React Native, and mobile teams.</p>
             </div>
         </div>
@@ -48,9 +79,9 @@ $topics = get_categories([
     <section class="section blog-list">
         <div class="container blog-layout">
             <div class="blog-main">
-                <?php if ($posts_query->have_posts()) : ?>
+                <?php if (have_posts()) : ?>
                     <?php
-                    $posts_query->the_post();
+                    the_post();
                     $featured_id = get_the_ID();
                     $featured_thumb = get_the_post_thumbnail_url($featured_id, 'large');
                     $featured_cats = get_the_category();
@@ -71,7 +102,7 @@ $topics = get_categories([
                                 <span><?php echo esc_html(get_the_author()); ?></span>
                             </p>
                             <p class="featured-card__excerpt"><?php echo esc_html(wp_trim_words(get_the_excerpt(), 32, '…')); ?></p>
-                            <a class="primary-btn" href="<?php the_permalink(); ?>">Read full article</a>
+                            <a class="primary-btn" href="<?php the_permalink(); ?>">Read article</a>
                         </div>
                         <?php if ($featured_thumb) : ?>
                             <div class="featured-card__image">
@@ -80,11 +111,11 @@ $topics = get_categories([
                         <?php endif; ?>
                     </article>
 
-                    <?php if ($posts_query->have_posts()) : ?>
+                    <?php if (have_posts()) : ?>
                         <div class="post-grid post-grid--compact">
                             <?php
-                            while ($posts_query->have_posts()) :
-                                $posts_query->the_post();
+                            while (have_posts()) :
+                                the_post();
                                 $thumb = get_the_post_thumbnail_url(get_the_ID(), 'large');
                                 $categories = get_the_category();
                                 $primary_category = !empty($categories) ? $categories[0] : null;
@@ -149,22 +180,14 @@ $topics = get_categories([
                         </div>
                     <?php endif; ?>
 
-                    <?php
-                    $pagination = paginate_links([
-                        'total' => $posts_query->max_num_pages,
-                        'current' => $paged,
-                        'mid_size' => 2,
-                        'prev_text' => '← Newer',
-                        'next_text' => 'Older →',
-                    ]);
-                    if ($pagination) :
-                        ?>
-                        <div class="posts-pagination">
-                            <?php echo $pagination; ?>
-                        </div>
-                    <?php endif; ?>
+                    <div class="posts-pagination">
+                        <?php the_posts_pagination([
+                            'prev_text' => '← Newer',
+                            'next_text' => 'Older →',
+                        ]); ?>
+                    </div>
                 <?php else : ?>
-                    <p class="empty-state">No posts published yet.</p>
+                    <p class="empty-state">No posts found in this archive.</p>
                 <?php endif; ?>
             </div>
 
@@ -183,7 +206,14 @@ $topics = get_categories([
                         <h3 class="widget-title">Topics</h3>
                         <div class="widget-tags">
                             <?php foreach ($topics as $topic) : ?>
-                                <a class="blog-chip" href="<?php echo esc_url(get_category_link($topic->term_id)); ?>">
+                                <?php
+                                $is_current = is_category($topic->term_id);
+                                $chip_classes = ['blog-chip'];
+                                if ($is_current) {
+                                    $chip_classes[] = 'is-active';
+                                }
+                                ?>
+                                <a class="<?php echo esc_attr(implode(' ', $chip_classes)); ?>" href="<?php echo esc_url(get_category_link($topic->term_id)); ?>">
                                     <?php echo esc_html($topic->name); ?>
                                 </a>
                             <?php endforeach; ?>
@@ -232,5 +262,4 @@ $topics = get_categories([
     </section>
 </main>
 <?php
-wp_reset_postdata();
 get_footer();

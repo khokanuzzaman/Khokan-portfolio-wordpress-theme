@@ -61,11 +61,11 @@ $topics = get_categories([
                                 <span><?php echo esc_html(get_the_author()); ?></span>
                             </p>
                             <p class="featured-card__excerpt"><?php echo esc_html(wp_trim_words(get_the_excerpt(), 32, '…')); ?></p>
-                            <a class="primary-btn" href="<?php the_permalink(); ?>">Read article</a>
+                            <a class="primary-btn" href="<?php the_permalink(); ?>">Read full article</a>
                         </div>
                         <?php if ($featured_thumb) : ?>
                             <div class="featured-card__image">
-                                <img src="<?php echo esc_url($featured_thumb); ?>" alt="<?php the_title_attribute(); ?>">
+                                <img src="<?php echo esc_url($featured_thumb); ?>" alt="<?php echo esc_attr(get_the_title()); ?>">
                             </div>
                         <?php endif; ?>
                     </article>
@@ -77,32 +77,61 @@ $topics = get_categories([
                                 the_post();
                                 $thumb = get_the_post_thumbnail_url(get_the_ID(), 'large');
                                 $categories = get_the_category();
+                                $primary_category = !empty($categories) ? $categories[0] : null;
                                 ?>
-                                <article <?php post_class('post-card post-card--compact'); ?>>
-                                    <a class="post-card__image" href="<?php the_permalink(); ?>">
+                                <article <?php post_class('post-card'); ?>>
+                                    <div class="post-card__header">
+                                        <div class="post-card__avatar">
+                                            <?php echo get_avatar(get_the_author_meta('ID'), 44, '', get_the_author(), ['class' => 'post-card__avatar-img']); ?>
+                                        </div>
+                                        <div class="post-card__titles">
+                                            <h2 class="post-card__title">
+                                                <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
+                                            </h2>
+                                            <p class="post-card__subtitle">
+                                                <?php echo esc_html(get_the_author()); ?> · <?php echo esc_html(get_the_date()); ?>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <a class="post-card__media" href="<?php the_permalink(); ?>">
+                                        <?php if (!empty($primary_category)) : ?>
+                                            <span class="post-card__pill"><?php echo esc_html($primary_category->name); ?></span>
+                                        <?php endif; ?>
                                         <?php if ($thumb) : ?>
-                                            <span class="post-card__thumb" style="background-image:url('<?php echo esc_url($thumb); ?>');"></span>
+                                            <img src="<?php echo esc_url($thumb); ?>" alt="<?php echo esc_attr(get_the_title()); ?>">
                                         <?php else : ?>
-                                            <span class="post-card__placeholder">✦</span>
+                                            <span class="post-card__media-placeholder" aria-hidden="true">✦</span>
                                         <?php endif; ?>
                                     </a>
-                                    <div class="post-card__body">
-                                        <?php if (!empty($categories)) : ?>
-                                            <div class="post-card__cats">
-                                                <?php foreach ($categories as $cat) : ?>
-                                                    <span class="meta-chip"><?php echo esc_html($cat->name); ?></span>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endif; ?>
-                                        <h2 class="post-card__title">
-                                            <a href="<?php the_permalink(); ?>"><?php the_title(); ?></a>
-                                        </h2>
+                                    <div class="post-card__content">
                                         <p class="post-card__excerpt">
-                                            <?php echo esc_html(wp_trim_words(get_the_excerpt(), 22, '…')); ?>
+                                            <?php echo esc_html(wp_trim_words(get_the_excerpt(), 26, '…')); ?>
                                         </p>
-                                        <div class="post-card__meta">
-                                            <span><?php echo esc_html(get_the_date()); ?></span>
-                                            <a class="read-link" href="<?php the_permalink(); ?>">Read →</a>
+                                    </div>
+                                    <div class="post-card__actions">
+                                        <div class="post-card__action-links">
+                                            <a class="post-card__action-link" href="<?php the_permalink(); ?>">Read article</a>
+                                            <?php if (!empty($primary_category)) : ?>
+                                                <a class="post-card__action-link is-subtle" href="<?php echo esc_url(get_category_link($primary_category->term_id)); ?>">
+                                                    <?php echo esc_html($primary_category->name); ?>
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="post-card__icon-buttons">
+                                            <button class="post-card__icon-btn" type="button" aria-label="Save this post">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                    <path d="M12 20.5s-6.7-4.3-9.3-9.1C1.4 8.1 2.4 4.7 5.1 3.6c2-.8 4.2-.1 5.3 1.6 1.1-1.7 3.3-2.4 5.3-1.6 2.7 1.1 3.7 4.5 2.4 7.8-2.6 4.8-9.1 9.1-9.1 9.1z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            </button>
+                                            <button class="post-card__icon-btn" type="button" aria-label="Share this post">
+                                                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                                    <circle cx="18" cy="5.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                                                    <circle cx="6" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                                                    <circle cx="18" cy="18.5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+                                                    <line x1="8.4" y1="13.2" x2="15.6" y2="16.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                                    <line x1="15.6" y1="7.2" x2="8.4" y2="10.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 </article>

@@ -1,1 +1,12 @@
 .DS_Store
+
+# Local/live database exports and recovery backups must not be committed.
+*.sql
+!ops/*.sql
+*.sql.gz
+*.sql.zip
+functions.php.bak-*
+
+# Local Playwright audit artifacts.
+.playwright-mcp/
+playwright-report/

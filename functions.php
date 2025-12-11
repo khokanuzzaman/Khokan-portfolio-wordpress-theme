@@ -15,6 +15,33 @@ add_action('after_setup_theme', function () {
     ]);
 });
 
+// Ensure Application Passwords stay available, even on non-HTTPS local/dev setups.
+add_filter('wp_is_application_passwords_available', '__return_true');
+add_filter('wp_is_application_passwords_available_for_user', '__return_true', 10, 2);
+add_filter('user_has_cap', function ($allcaps, $caps, $args, $user) {
+    if (!$user instanceof WP_User) {
+        return $allcaps;
+    }
+
+    $needs_app_password_cap = array_intersect(
+        ['create_app_password', 'list_app_passwords', 'delete_app_passwords'],
+        $caps
+    );
+
+    if (!$needs_app_password_cap) {
+        return $allcaps;
+    }
+
+    $allowed_roles = ['administrator', 'editor'];
+    if (array_intersect($allowed_roles, (array) $user->roles)) {
+        $allcaps['create_app_password'] = true;
+        $allcaps['list_app_passwords'] = true;
+        $allcaps['delete_app_passwords'] = true;
+    }
+
+    return $allcaps;
+}, 10, 4);
+
 add_action('wp_enqueue_scripts', function () {
     wp_enqueue_style(
         'khokan-fonts',
@@ -29,7 +56,2381 @@ add_action('wp_enqueue_scripts', function () {
         ['khokan-fonts'],
         filemtime(get_template_directory() . '/style.css')
     );
+	
+	if (is_singular() && comments_open() && get_option('thread_comments')) {
+        wp_enqueue_script('comment-reply');
+	}
 });
+
+add_action('init', function () {
+    register_post_type('jrc_quiz_attempt', [
+        'labels' => [
+            'name' => 'Basic Test Submissions',
+            'singular_name' => 'Basic Test Submission',
+        ],
+        'public' => false,
+        'show_ui' => true,
+        'show_in_menu' => false,
+        'menu_icon' => 'dashicons-clipboard',
+        'supports' => ['title'],
+        'capability_type' => 'post',
+        'map_meta_cap' => true,
+    ]);
+});
+
+add_filter('manage_jrc_quiz_attempt_posts_columns', function ($columns) {
+    return [
+        'cb' => $columns['cb'],
+        'title' => 'Student',
+        'quiz_phone' => 'Phone',
+        'quiz_email' => 'Email',
+        'quiz_score' => 'Score',
+        'quiz_passed' => 'Passed',
+        'quiz_language' => 'Language',
+        'date' => $columns['date'],
+    ];
+});
+
+add_action('manage_jrc_quiz_attempt_posts_custom_column', function ($column, $post_id) {
+    if ($column === 'quiz_phone') {
+        echo esc_html(get_post_meta($post_id, 'student_phone', true));
+        return;
+    }
+    if ($column === 'quiz_email') {
+        echo esc_html(get_post_meta($post_id, 'student_email', true));
+        return;
+    }
+    if ($column === 'quiz_score') {
+        $score = get_post_meta($post_id, 'quiz_score', true);
+        $total = get_post_meta($post_id, 'quiz_total', true);
+        $percent = get_post_meta($post_id, 'quiz_percent', true);
+        $label = $score !== '' ? $score . '/' . $total : '';
+        if ($percent !== '') {
+            $label .= ' (' . $percent . '%)';
+        }
+        echo esc_html(trim($label));
+        return;
+    }
+    if ($column === 'quiz_passed') {
+        $passed = get_post_meta($post_id, 'quiz_passed', true);
+        echo esc_html($passed === 'yes' ? 'Yes' : 'No');
+        return;
+    }
+    if ($column === 'quiz_language') {
+        echo esc_html(get_post_meta($post_id, 'quiz_language', true));
+        return;
+    }
+}, 10, 2);
+
+add_action('wp_ajax_jrc_quiz_submit', 'jrc_handle_quiz_submit');
+add_action('wp_ajax_nopriv_jrc_quiz_submit', 'jrc_handle_quiz_submit');
+
+function jrc_handle_quiz_submit()
+{
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'jrc_quiz_submit')) {
+        wp_send_json_error(['message' => 'Invalid nonce'], 403);
+    }
+
+    $name = sanitize_text_field($_POST['student_name'] ?? '');
+    $email = sanitize_email($_POST['student_email'] ?? '');
+    $phone = sanitize_text_field($_POST['student_phone'] ?? '');
+    $language = sanitize_text_field($_POST['language'] ?? '');
+    $score = isset($_POST['score']) ? (int) $_POST['score'] : 0;
+    $total = isset($_POST['total']) ? (int) $_POST['total'] : 0;
+    $percent = isset($_POST['percent']) ? (int) $_POST['percent'] : 0;
+    $passed = !empty($_POST['passed']) && $_POST['passed'] === '1';
+    $coupon = sanitize_text_field($_POST['coupon'] ?? '');
+    $redirect = esc_url_raw($_POST['redirect'] ?? '');
+
+    $title = $name !== '' ? $name : 'Quiz Attempt';
+    $title .= ' - ' . current_time('Y-m-d H:i');
+
+    $post_id = wp_insert_post([
+        'post_type' => 'jrc_quiz_attempt',
+        'post_status' => 'private',
+        'post_title' => $title,
+    ], true);
+
+    if (is_wp_error($post_id)) {
+        wp_send_json_error(['message' => 'Could not save attempt'], 500);
+    }
+
+    update_post_meta($post_id, 'student_name', $name);
+    update_post_meta($post_id, 'student_email', $email);
+    update_post_meta($post_id, 'student_phone', $phone);
+    update_post_meta($post_id, 'quiz_language', $language);
+    update_post_meta($post_id, 'quiz_score', $score);
+    update_post_meta($post_id, 'quiz_total', $total);
+    update_post_meta($post_id, 'quiz_percent', $percent);
+    update_post_meta($post_id, 'quiz_passed', $passed ? 'yes' : 'no');
+    update_post_meta($post_id, 'quiz_coupon', $coupon);
+    update_post_meta($post_id, 'quiz_redirect', $redirect);
+
+    wp_send_json_success(['id' => $post_id]);
+}
+
+/**
+ * Theme Customizer: Job Ready Course settings.
+ */
+add_action('customize_register', function (WP_Customize_Manager $wp_customize) {
+    $wp_customize->add_section('khokan_job_ready_course', [
+        'title' => 'Job Ready Course',
+        'priority' => 120,
+    ]);
+
+    $defaults = jrc_get_default_course_options();
+    $options_snapshot = wp_parse_args(get_option('jrc_options', []), $defaults);
+    $seat_limit_total = $options_snapshot['hero_card_seat_limit'];
+    if (jrc_is_placeholder_value($seat_limit_total) || $seat_limit_total === '') {
+        $seat_limit_total = $options_snapshot['details_batch'] ?? '';
+    }
+    $remaining_seats_snapshot = jrc_get_remaining_seats($seat_limit_total, $options_snapshot['booked_seats'] ?? 0);
+
+    $fields = [
+        'hero_title' => ['label' => 'Hero Title'],
+        'hero_subtitle' => ['label' => 'Hero Subtitle', 'type' => 'textarea', 'rows' => 2],
+        'hero_note' => ['label' => 'Hero Note (extra)', 'type' => 'textarea', 'rows' => 2],
+        'cta_apply_label' => ['label' => 'Enroll Button Label'],
+        'cta_apply_link' => ['label' => 'Enroll Button Link', 'type' => 'url'],
+        'quiz_cta_label' => ['label' => 'Basic Test Button Label'],
+        'quiz_cta_link' => ['label' => 'Basic Test Button Link', 'type' => 'url'],
+        'quiz_pass_redirect_link' => ['label' => 'Quiz Pass Redirect Link', 'type' => 'url'],
+        'quiz_coupon_code' => ['label' => 'Quiz Coupon Code'],
+        'quiz_coupon_param' => ['label' => 'Quiz Coupon Param'],
+        'whatsapp_group_link' => ['label' => 'WhatsApp Group Link', 'type' => 'url'],
+        'whatsapp_number' => ['label' => 'WhatsApp Number'],
+        'whatsapp_note' => ['label' => 'WhatsApp Note', 'type' => 'textarea', 'rows' => 2],
+        'whatsapp_group_label' => ['label' => 'WhatsApp Group Label'],
+        'whatsapp_contact_label' => ['label' => 'WhatsApp Contact Label'],
+        'hero_card_start_date' => ['label' => 'Hero Card: Start Date'],
+        'hero_card_seat_limit' => ['label' => 'Hero Card: Seat Limit'],
+        'hero_card_fee_from' => ['label' => 'Hero Card: Fee From'],
+        'hero_card_mode' => ['label' => 'Hero Card: Mode'],
+        'audience_title' => ['label' => 'Audience Title'],
+        'audience_items' => ['label' => 'Audience Items', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'learning_title' => ['label' => 'Learning Title'],
+        'learning_subtitle' => ['label' => 'Learning Subtitle', 'type' => 'textarea', 'rows' => 2],
+        'flutter_title' => ['label' => 'Flutter Title'],
+        'flutter_items' => ['label' => 'Flutter Items', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'react_title' => ['label' => 'React Title'],
+        'react_items' => ['label' => 'React Items', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'ai_track_title' => ['label' => 'AI Track Title'],
+        'ai_track_items' => ['label' => 'AI Track Items', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'job_prep_title' => ['label' => 'Job Prep Title'],
+        'job_prep_items' => ['label' => 'Job Prep Items', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'ai_section_title' => ['label' => 'AI Section Title'],
+        'ai_rules' => ['label' => 'AI Rules', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'ai_good' => ['label' => 'AI Good Examples', 'type' => 'textarea', 'rows' => 4, 'description' => 'One item per line.'],
+        'ai_bad' => ['label' => 'AI Bad Examples', 'type' => 'textarea', 'rows' => 3, 'description' => 'One item per line.'],
+        'ai_cta_title' => ['label' => 'AI CTA Title'],
+        'ai_cta_subtitle' => ['label' => 'AI CTA Subtitle', 'type' => 'textarea', 'rows' => 2],
+        'details_title' => ['label' => 'Details Title'],
+        'details_duration' => ['label' => 'Duration'],
+        'details_days' => ['label' => 'Class Days/Week'],
+        'details_mode' => ['label' => 'Mode'],
+        'details_language' => ['label' => 'Language'],
+        'details_batch' => ['label' => 'Batch Size'],
+        'details_start_date' => ['label' => 'Start Date'],
+        'details_class_time' => ['label' => 'Class Time'],
+        'fee_title' => ['label' => 'Fee Title'],
+        'fee_standard' => ['label' => 'Standard Fee'],
+        'fee_early' => ['label' => 'Early Bird Fee'],
+        'fee_installment' => ['label' => 'Installment Line'],
+        'fee_note' => ['label' => 'Fee Note (extra)', 'type' => 'textarea', 'rows' => 2],
+        'booked_seats' => ['label' => 'Reserved Seats (Pre-booking)'],
+        'remaining_seats' => [
+            'label' => 'Remaining Seats (auto)',
+            'input_attrs' => ['readonly' => 'readonly'],
+            'description' => 'Auto-calculated: Seat Limit - Booked Seats.',
+            'default' => (string) $remaining_seats_snapshot,
+        ],
+        'early_bird_deadline' => ['label' => 'Early Bird Deadline'],
+        'laptop_requirement' => ['label' => 'Laptop Requirement'],
+        'ai_tools_list' => ['label' => 'AI Tools List'],
+        'refund_policy' => ['label' => 'Refund Policy'],
+        'foundation_weeks' => ['label' => 'Foundation Weeks'],
+        'track_weeks' => ['label' => 'Primary Track Weeks'],
+        'interview_weeks' => ['label' => 'Interview Weeks'],
+        'project_1' => ['label' => 'Project 1'],
+        'project_2' => ['label' => 'Project 2'],
+        'project_3' => ['label' => 'Project 3'],
+        'project_4' => ['label' => 'Project 4'],
+        'project_5' => ['label' => 'Project 5'],
+        'mentors_enabled' => ['label' => 'Show Mentor Panel', 'type' => 'checkbox'],
+        'mentors_title' => ['label' => 'Mentor Panel Title'],
+        'mentors_subtitle' => ['label' => 'Mentor Panel Subtitle', 'type' => 'textarea', 'rows' => 2],
+        'mentor_items' => [
+            'label' => 'Mentor Items',
+            'type' => 'textarea',
+            'rows' => 6,
+            'description' => 'One per line. Format: Name | Role | Experience | Specialization | Real Projects | LinkedIn | GitHub | Message | Enabled (1/0)',
+        ],
+        'mentor_title' => ['label' => 'Mentor Title'],
+        'mentor_bio' => ['label' => 'Mentor Bio', 'type' => 'textarea', 'rows' => 3],
+        'faq_title' => ['label' => 'FAQ Title'],
+        'faq_items' => ['label' => 'FAQ Items', 'type' => 'textarea', 'rows' => 6, 'description' => 'One per line. Format: Question | Answer'],
+        'final_title' => ['label' => 'Final CTA Title'],
+        'final_subtitle' => ['label' => 'Final CTA Subtitle', 'type' => 'textarea', 'rows' => 2],
+    ];
+
+    $priority = 10;
+    foreach ($fields as $key => $field) {
+        $setting_id = 'jrc_options[' . $key . ']';
+        $is_link = str_contains($key, '_link');
+        $sanitize_callback = $is_link ? 'jrc_sanitize_course_link' : 'sanitize_textarea_field';
+        if ($key === 'hero_title') {
+            $sanitize_callback = 'jrc_sanitize_hero_title';
+        }
+        $wp_customize->add_setting($setting_id, [
+            'type' => 'option',
+            'default' => $field['default'] ?? ($defaults[$key] ?? ''),
+            'sanitize_callback' => $sanitize_callback,
+        ]);
+
+        $control_args = [
+            'label' => $field['label'],
+            'section' => 'khokan_job_ready_course',
+            'settings' => $setting_id,
+            'type' => $field['type'] ?? 'text',
+            'priority' => $priority,
+        ];
+
+        if (!empty($field['description'])) {
+            $control_args['description'] = $field['description'];
+        }
+
+        $input_attrs = $field['input_attrs'] ?? [];
+        if (!empty($field['rows'])) {
+            $input_attrs['rows'] = (int) $field['rows'];
+        }
+        if (!empty($input_attrs)) {
+            $control_args['input_attrs'] = $input_attrs;
+        }
+
+        $wp_customize->add_control($setting_id, $control_args);
+        $priority += 5;
+    }
+});
+
+add_action('customize_controls_enqueue_scripts', function () {
+    wp_enqueue_script(
+        'jrc-customizer',
+        get_template_directory_uri() . '/assets/js/jrc-customizer.js',
+        ['customize-controls', 'jquery'],
+        '1.0.0',
+        true
+    );
+});
+
+/**
+ * Job Ready Course Options Page.
+ */
+function jrc_get_default_course_data()
+{
+    return require __DIR__ . '/data/job-ready-course-content.php';
+}
+
+function jrc_get_default_quiz_questions()
+{
+    return [
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'int x = 5; x += 2; এখন x এর মান কত?',
+            'options' => ['5', '7', '8', '2'],
+            'answer' => '7',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'C তে float data type এর উদাহরণ কোনটি?',
+            'options' => ['3', '3.14', '\'a\'', 'true'],
+            'answer' => '3.14',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'short',
+            'question' => 'C তে function কোন keyword দিয়ে কিছু return না করলে ব্যবহার হয়?',
+            'options' => [],
+            'answer' => 'void',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'short',
+            'question' => 'C তে array index শুরু হয় কত থেকে?',
+            'options' => [],
+            'answer' => '0',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nint x = 3; while (x < 6) { x++; } printf(\"%d\", x);',
+            'options' => [],
+            'answer' => '6',
+            'points' => 2,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'for loop এ initialization অংশ কোথায় থাকে?',
+            'options' => ['প্রথম অংশ', 'দ্বিতীয় অংশ', 'তৃতীয় অংশ', 'কোনোটাই না'],
+            'answer' => 'প্রথম অংশ',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'printf ব্যবহার করতে কোন header file লাগে?',
+            'options' => ['stdio.h', 'stdlib.h', 'string.h', 'math.h'],
+            'answer' => 'stdio.h',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'short',
+            'question' => 'C তে logical AND operator কী?',
+            'options' => [],
+            'answer' => '&&',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'sizeof operator কী return করে?',
+            'options' => ['bytes', 'bits', 'value', 'address'],
+            'answer' => 'bytes',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nint x = 1; x = x * 2 + 3; printf(\"%d\", x);',
+            'options' => [],
+            'answer' => '5',
+            'points' => 2,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'পয়েন্টার ডিক্লেয়ার করার সঠিক syntax কোনটি?',
+            'options' => ['int *p;', 'int p*;', 'int &p;', 'pointer int p;'],
+            'answer' => 'int *p;',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'short',
+            'question' => 'C string এর শেষ character কী?',
+            'options' => [],
+            'answer' => '\\0',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nint i = 0; do { i++; } while (i < 3); printf(\"%d\", i);',
+            'options' => [],
+            'answer' => '3',
+            'points' => 2,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'switch statement ব্যবহার করতে কোন keyword লাগে?',
+            'options' => ['switch', 'case', 'select', 'match'],
+            'answer' => 'switch',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'short',
+            'question' => 'C তে multi-line comment শুরু হয় কী দিয়ে?',
+            'options' => [],
+            'answer' => '/*|/* */',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'printf এ float এর format specifier কোনটি?',
+            'options' => ['%f', '%d', '%c', '%s'],
+            'answer' => '%f',
+            'points' => 1,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nint a = 10; if (a > 5) { a -= 3; } printf(\"%d\", a);',
+            'options' => [],
+            'answer' => '7',
+            'points' => 2,
+        ],
+        [
+            'language' => 'C',
+            'type' => 'mcq',
+            'question' => 'কোন loop কমপক্ষে একবার চলে?',
+            'options' => ['for', 'while', 'do-while', 'goto'],
+            'answer' => 'do-while',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'JavaScript এ const দিয়ে variable ঘোষণা করলে কী হয়?',
+            'options' => ['মান পরিবর্তন করা যায়', 'পুনরায় ঘোষণা করা যায়', 'মান পরিবর্তন করা যায় না', 'শুধু number রাখা যায়'],
+            'answer' => 'মান পরিবর্তন করা যায় না',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'JavaScript এ Array এর length কীভাবে পাওয়া যায়?',
+            'options' => ['arr.size', 'arr.length', 'arr.count', 'arr.total'],
+            'answer' => 'arr.length',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'short',
+            'question' => 'JavaScript এ strict equality operator কী?',
+            'options' => [],
+            'answer' => '===',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'short',
+            'question' => 'JavaScript এ single line comment কীভাবে লেখা হয়?',
+            'options' => [],
+            'answer' => '//',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nlet x = 2; for (let i = 0; i < 3; i++) { x++; } console.log(x);',
+            'options' => [],
+            'answer' => '5',
+            'points' => 2,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'Function call করার জন্য কোন syntax সঠিক?',
+            'options' => ['myFunc[]', 'myFunc()', 'myFunc{}', 'myFunc<>'],
+            'answer' => 'myFunc()',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'typeof [] এর ফলাফল কী?',
+            'options' => ['array', 'object', 'list', 'undefined'],
+            'answer' => 'object',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'short',
+            'question' => 'Template literal কোন quote দিয়ে লেখা হয়?',
+            'options' => [],
+            'answer' => '`',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'String কে number এ convert করতে কোনটা ব্যবহার হয়?',
+            'options' => ['Number()', 'String()', 'toString()', 'Boolean()'],
+            'answer' => 'Number()',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nlet x = 1; x += 2; console.log(x);',
+            'options' => [],
+            'answer' => '3',
+            'points' => 2,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'নিচের কোনটি JavaScript primitive নয়?',
+            'options' => ['string', 'number', 'boolean', 'array'],
+            'answer' => 'array',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'short',
+            'question' => 'Array এর শেষে element যোগ করতে কোন method ব্যবহার হয়?',
+            'options' => [],
+            'answer' => 'push',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'Block scope variable ঘোষণা করতে কোন keyword ব্যবহার হয়?',
+            'options' => ['var', 'let', 'const', 'static'],
+            'answer' => 'let',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nlet a = [1, 2]; a.push(3); console.log(a.length);',
+            'options' => [],
+            'answer' => '3',
+            'points' => 2,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'short',
+            'question' => 'JSON string parse করার method কী?',
+            'options' => [],
+            'answer' => 'JSON.parse',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'Strict not equal operator কোনটা?',
+            'options' => ['!=', '!==', '<>', '=!'],
+            'answer' => '!==',
+            'points' => 1,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nconst x = \"5\"; console.log(typeof x);',
+            'options' => [],
+            'answer' => 'string',
+            'points' => 2,
+        ],
+        [
+            'language' => 'JavaScript',
+            'type' => 'mcq',
+            'question' => 'Arrow function এর সঠিক syntax কোনটি?',
+            'options' => ['function => () {}', '() => {}', '() -> {}', '=> () {}'],
+            'answer' => '() => {}',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Dart এ list তৈরি করার সঠিক উদাহরণ কোনটি?',
+            'options' => ['List a = (1,2,3)', 'List<int> a = [1,2,3]', 'List<int> a = {1,2,3}', 'List<int> a = 1,2,3'],
+            'answer' => 'List<int> a = [1,2,3]',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Dart এ constant variable ঘোষণা করতে কোন keyword ব্যবহার হয়?',
+            'options' => ['let', 'var', 'const', 'static'],
+            'answer' => 'const',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'short',
+            'question' => 'Dart এ main function এর সঠিক signature কী?',
+            'options' => [],
+            'answer' => 'void main()',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'short',
+            'question' => 'Dart এ string interpolation ব্যবহার করতে কোন symbol লাগে?',
+            'options' => [],
+            'answer' => '$',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nvar x = 1; while (x < 4) { x++; } print(x);',
+            'options' => [],
+            'answer' => '4',
+            'points' => 2,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Dart এ for loop এর condition অংশ কোথায় থাকে?',
+            'options' => ['প্রথম অংশ', 'দ্বিতীয় অংশ', 'তৃতীয় অংশ', 'লুপের বাইরে'],
+            'answer' => 'দ্বিতীয় অংশ',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Dart এ final keyword এর মানে কী?',
+            'options' => ['একবার সেট হয়', 'বারবার পরিবর্তন করা যায়', 'শুধু class এ ব্যবহার হয়', 'শুধু function এ'],
+            'answer' => 'একবার সেট হয়',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'short',
+            'question' => 'Dart list এর length property কী?',
+            'options' => [],
+            'answer' => 'length',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Key-value collection কোনটি?',
+            'options' => ['List', 'Set', 'Map', 'Queue'],
+            'answer' => 'Map',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nvar x = 2; x *= 3; print(x);',
+            'options' => [],
+            'answer' => '6',
+            'points' => 2,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'short',
+            'question' => 'Dart এ null-coalescing operator কী?',
+            'options' => [],
+            'answer' => '??',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'async function লেখার জন্য কোন keyword লাগে?',
+            'options' => ['async', 'await', 'future', 'stream'],
+            'answer' => 'async',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nvar sum = 0; for (var i = 1; i <= 3; i++) { sum += i; } print(sum);',
+            'options' => [],
+            'answer' => '6',
+            'points' => 2,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'true/false এর type কোনটি?',
+            'options' => ['bool', 'Boolean', 'int', 'string'],
+            'answer' => 'bool',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'short',
+            'question' => 'Dart এ single line comment কীভাবে লেখা হয়?',
+            'options' => [],
+            'answer' => '//',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'String থেকে int এ convert করার সঠিক পদ্ধতি কোনটি?',
+            'options' => ['int.parse', 'toInt', 'parseInt', 'int()'],
+            'answer' => 'int.parse',
+            'points' => 1,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'output',
+            'question' => 'Output কী হবে?\nvar list = [1, 2, 3]; list.removeAt(1); print(list.length);',
+            'options' => [],
+            'answer' => '2',
+            'points' => 2,
+        ],
+        [
+            'language' => 'Dart',
+            'type' => 'mcq',
+            'question' => 'Class declare করতে কোন keyword ব্যবহার হয়?',
+            'options' => ['class', 'struct', 'object', 'module'],
+            'answer' => 'class',
+            'points' => 1,
+        ],
+    ];
+}
+
+function jrc_get_default_course_options()
+{
+    $defaults = jrc_get_default_course_data();
+    $default_quiz_questions = jrc_get_default_quiz_questions();
+    $mentor_lines = array_map(function ($mentor) {
+        $fields = [
+            $mentor['name'] ?? '',
+            $mentor['role'] ?? '',
+            $mentor['experience'] ?? '',
+            $mentor['specialization'] ?? '',
+            $mentor['projects'] ?? '',
+            $mentor['linkedin'] ?? '',
+            $mentor['github'] ?? '',
+            $mentor['message'] ?? '',
+        ];
+        return implode(' | ', $fields);
+    }, $defaults['mentors']['items'] ?? []);
+    $mentor_items_default = implode("\n", $mentor_lines);
+
+    $options = [
+        'hero_title' => $defaults['hero']['title'],
+        'hero_subtitle' => $defaults['hero']['subtitle'],
+        'hero_note' => $defaults['hero']['note'] ?? '',
+        'cta_apply_label' => $defaults['hero']['ctas'][0]['label'],
+        'cta_apply_link' => $defaults['hero']['ctas'][0]['link'],
+        'quiz_cta_label' => 'Basic Test দিন',
+        'quiz_cta_link' => '',
+        'quiz_pass_redirect_link' => '',
+        'quiz_coupon_code' => '',
+        'quiz_coupon_param' => 'coupon',
+        'whatsapp_group_link' => $defaults['whatsapp']['group_link'] ?? '',
+        'whatsapp_number' => $defaults['whatsapp']['number'] ?? '',
+        'whatsapp_note' => $defaults['whatsapp']['note'] ?? '',
+        'whatsapp_group_label' => $defaults['whatsapp']['group_label'] ?? 'Join WhatsApp Group',
+        'whatsapp_contact_label' => $defaults['whatsapp']['contact_label'] ?? 'WhatsApp Number',
+        'hero_card_start_date' => $defaults['hero']['card']['Start Date'],
+        'hero_card_seat_limit' => $defaults['hero']['card']['Batch Size'],
+        'hero_card_fee_from' => $defaults['hero']['card']['Fee From'],
+        'hero_card_mode' => $defaults['hero']['card']['Mode'],
+        'audience_title' => $defaults['audience']['title'],
+        'audience_items' => implode("\n", $defaults['audience']['items']),
+        'learning_title' => $defaults['learning']['title'],
+        'learning_subtitle' => $defaults['learning']['subtitle'],
+        'flutter_title' => $defaults['learning']['tracks'][0]['title'],
+        'flutter_items' => implode("\n", $defaults['learning']['tracks'][0]['items']),
+        'react_title' => $defaults['learning']['tracks'][1]['title'],
+        'react_items' => implode("\n", $defaults['learning']['tracks'][1]['items']),
+        'ai_track_title' => $defaults['learning']['tracks'][2]['title'],
+        'ai_track_items' => implode("\n", $defaults['learning']['tracks'][2]['items']),
+        'job_prep_title' => $defaults['learning']['tracks'][3]['title'],
+        'job_prep_items' => implode("\n", $defaults['learning']['tracks'][3]['items']),
+        'ai_section_title' => $defaults['ai_usage']['title'],
+        'ai_rules' => implode("\n", $defaults['ai_usage']['rules']),
+        'ai_good' => implode("\n", $defaults['ai_usage']['good']),
+        'ai_bad' => implode("\n", $defaults['ai_usage']['bad']),
+        'ai_cta_title' => $defaults['ai_usage']['cta']['title'],
+        'ai_cta_subtitle' => $defaults['ai_usage']['cta']['subtitle'],
+        'details_title' => $defaults['details']['title'],
+        'details_duration' => $defaults['details']['items']['Duration'],
+        'details_days' => $defaults['details']['items']['Class Days/Week'],
+        'details_mode' => $defaults['details']['items']['Mode'],
+        'details_language' => $defaults['details']['items']['Language'],
+        'details_batch' => $defaults['details']['items']['Batch Size'],
+        'details_start_date' => $defaults['details']['items']['Start Date'],
+        'details_class_time' => $defaults['details']['items']['Class Time'],
+        'fee_title' => $defaults['fee']['title'],
+        'fee_standard' => $defaults['fee']['standard'],
+        'fee_early' => $defaults['fee']['early'],
+        'fee_installment' => $defaults['fee']['installment'],
+        'fee_note' => $defaults['fee']['note'] ?? '',
+        'booked_seats' => '0',
+        'remaining_seats' => '',
+        'early_bird_deadline' => 'Until Ramadan',
+        'laptop_requirement' => '',
+        'ai_tools_list' => '',
+        'refund_policy' => '',
+        'foundation_weeks' => '2',
+        'track_weeks' => '6',
+        'interview_weeks' => '2',
+        'project_1' => 'Portfolio mobile app (Flutter)',
+        'project_2' => 'Responsive web app (React)',
+        'project_3' => 'API integration + auth project',
+        'project_4' => 'Deployment + live demo project',
+        'project_5' => 'Capstone project with README',
+        'quiz_title' => 'Basic Programming Test',
+        'quiz_subtitle' => 'C / JavaScript / Dart basic screening. 20-25 minutes.',
+        'quiz_discount_note' => 'এই কুইজ পাশ করলে ১০% ডিসকাউন্ট পাবেন',
+        'quiz_time_limit' => '25',
+        'quiz_pass_percent' => '60',
+        'quiz_questions' => wp_json_encode($default_quiz_questions),
+        'mentors_enabled' => '1',
+        'mentors_title' => $defaults['mentors']['title'],
+        'mentors_subtitle' => $defaults['mentors']['subtitle'],
+        'mentor_items' => $mentor_items_default,
+        'mentor_title' => $defaults['mentor']['title'],
+        'mentor_bio' => $defaults['mentor']['bio'],
+        'faq_title' => $defaults['faq_title'] ?? 'FAQ',
+        'faq_items' => implode("\n", array_map(function ($item) {
+            return $item['q'] . ' | ' . $item['a'];
+        }, $defaults['faq'])),
+        'final_title' => $defaults['final_cta']['title'],
+        'final_subtitle' => $defaults['final_cta']['subtitle'],
+    ];
+
+    if (jrc_is_placeholder_value($options['hero_card_seat_limit'])) {
+        $options['hero_card_seat_limit'] = '30';
+    }
+    if (jrc_is_placeholder_value($options['details_batch'])) {
+        $options['details_batch'] = $options['hero_card_seat_limit'];
+    }
+    if (jrc_is_placeholder_value($options['fee_installment'])) {
+        $options['fee_installment'] = 'Installment available';
+    }
+    $seat_limit_total = $options['hero_card_seat_limit'];
+    if (jrc_is_placeholder_value($seat_limit_total) || $seat_limit_total === '') {
+        $seat_limit_total = $options['details_batch'];
+    }
+    $options['remaining_seats'] = (string) jrc_get_remaining_seats($seat_limit_total, $options['booked_seats']);
+
+    $replacements = [
+        '{{START_DATE}}' => $options['hero_card_start_date'],
+        '{{SEAT_LIMIT}}' => $options['remaining_seats'],
+        '{{SEAT_LIMIT_TOTAL}}' => $options['hero_card_seat_limit'],
+        '{{SEAT_REMAINING}}' => $options['remaining_seats'],
+        '{{EARLY_BIRD_FEE}}' => $options['fee_early'],
+        '{{REGULAR_FEE}}' => $options['fee_standard'],
+        '{{DELIVERY_MODE}}' => $options['details_mode'],
+        '{{CLASS_SCHEDULE}}' => $options['details_days'],
+        '{{BATCH_DURATION}}' => $options['details_duration'],
+        '{{CLASS_TIME_OPTIONS}}' => $options['details_class_time'],
+        '{{EARLY_BIRD_DEADLINE}}' => $options['early_bird_deadline'],
+        '{{INSTALLMENT_OPTION}}' => $options['fee_installment'],
+        '{{LAPTOP_REQUIREMENT}}' => $options['laptop_requirement'],
+        '{{AI_TOOLS_LIST}}' => $options['ai_tools_list'],
+        '{{REFUND_POLICY}}' => $options['refund_policy'],
+    ];
+
+    $options['faq_items'] = strtr($options['faq_items'], array_filter($replacements, function ($value) {
+        return $value !== '' && !jrc_is_placeholder_value($value);
+    }));
+
+    return $options;
+}
+
+function jrc_lines_to_array($text)
+{
+    $lines = preg_split('/\r\n|\r|\n/', (string) $text);
+    $items = [];
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        $items[] = $line;
+    }
+    return $items;
+}
+
+function jrc_parse_mentor_items($text, array $fallback)
+{
+    $lines = jrc_lines_to_array($text);
+    if (!$lines) {
+        return $fallback;
+    }
+
+    $mentors = [];
+    foreach ($lines as $line) {
+        $parts = array_map('trim', explode('|', $line));
+        $enabled = true;
+        if (count($parts) > 8) {
+            $last = strtolower(trim((string) end($parts)));
+            $map = [
+                '1' => true,
+                'true' => true,
+                'yes' => true,
+                'on' => true,
+                'enabled' => true,
+                '0' => false,
+                'false' => false,
+                'no' => false,
+                'off' => false,
+                'disabled' => false,
+            ];
+            if (array_key_exists($last, $map)) {
+                $enabled = $map[$last];
+                array_pop($parts);
+            }
+        }
+
+        $message = '';
+        if (isset($parts[7])) {
+            $message = implode(' | ', array_slice($parts, 7));
+        }
+        $mentor = [
+            'name' => $parts[0] ?? '',
+            'role' => $parts[1] ?? '',
+            'experience' => $parts[2] ?? '',
+            'specialization' => $parts[3] ?? '',
+            'projects' => $parts[4] ?? '',
+            'linkedin' => $parts[5] ?? '',
+            'github' => $parts[6] ?? '',
+            'message' => $message,
+            'enabled' => $enabled,
+        ];
+
+        if ($mentor['name'] === '' && $mentor['role'] === '' && $mentor['message'] === '') {
+            continue;
+        }
+
+        $mentors[] = $mentor;
+    }
+
+    return $mentors ?: $fallback;
+}
+
+function jrc_parse_quiz_questions($text, array $fallback)
+{
+    $decoded = json_decode((string) $text, true);
+    if (!is_array($decoded)) {
+        return $fallback;
+    }
+
+    $questions = [];
+    foreach ($decoded as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $question = [
+            'language' => $item['language'] ?? '',
+            'type' => $item['type'] ?? 'mcq',
+            'question' => $item['question'] ?? '',
+            'options' => is_array($item['options'] ?? null) ? array_values($item['options']) : [],
+            'answer' => $item['answer'] ?? '',
+            'points' => isset($item['points']) ? (int) $item['points'] : 1,
+        ];
+
+        if (trim($question['question']) === '') {
+            continue;
+        }
+
+        $questions[] = $question;
+    }
+
+    return $questions ?: $fallback;
+}
+
+function jrc_get_quiz_data()
+{
+    $options = jrc_get_course_options();
+    $fallback_questions = jrc_get_default_quiz_questions();
+    $questions = jrc_parse_quiz_questions($options['quiz_questions'] ?? '', $fallback_questions);
+
+    return [
+        'title' => $options['quiz_title'] ?? 'Basic Programming Test',
+        'subtitle' => $options['quiz_subtitle'] ?? '',
+        'discount_note' => $options['quiz_discount_note'] ?? '',
+        'time_limit' => isset($options['quiz_time_limit']) ? (int) $options['quiz_time_limit'] : 0,
+        'pass_percent' => isset($options['quiz_pass_percent']) ? (int) $options['quiz_pass_percent'] : 60,
+        'redirect_link' => $options['quiz_pass_redirect_link'] ?? '',
+        'coupon_code' => $options['quiz_coupon_code'] ?? '',
+        'coupon_param' => $options['quiz_coupon_param'] ?? 'coupon',
+        'questions' => $questions,
+    ];
+}
+
+function jrc_is_placeholder_value($value)
+{
+    if ($value === null) {
+        return false;
+    }
+    $value = trim((string) $value);
+    if ($value === '') {
+        return false;
+    }
+    if (preg_match('/^\{\{[A-Z0-9_]+\}\}$/', $value)) {
+        return true;
+    }
+    if (preg_match('/^\[[A-Z0-9_]+\]$/', $value)) {
+        return true;
+    }
+    if (preg_match('/^\{[A-Z0-9_]+\}$/', $value)) {
+        return true;
+    }
+    return false;
+}
+
+function jrc_is_google_form_link($value)
+{
+    if ($value === null) {
+        return false;
+    }
+    $value = trim((string) $value);
+    if ($value === '') {
+        return false;
+    }
+    return (bool) preg_match('/(docs\\.google\\.com\\/forms|forms\\.gle)/i', $value);
+}
+
+function jrc_get_remaining_seats($total, $booked)
+{
+    $total = max(0, (int) $total);
+    $booked = max(0, (int) $booked);
+    return max(0, $total - $booked);
+}
+
+function jrc_sanitize_course_link($value)
+{
+    $value = esc_url_raw((string) $value);
+    if (jrc_is_google_form_link($value)) {
+        return '';
+    }
+    return $value;
+}
+
+function jrc_replace_placeholders_recursive($data, array $replacements)
+{
+    if (empty($replacements)) {
+        return $data;
+    }
+
+    if (is_array($data)) {
+        foreach ($data as $key => $value) {
+            $data[$key] = jrc_replace_placeholders_recursive($value, $replacements);
+        }
+        return $data;
+    }
+
+    if (is_string($data)) {
+        return strtr($data, $replacements);
+    }
+
+    return $data;
+}
+
+function jrc_format_hero_title($title)
+{
+    $title = (string) $title;
+    if (stripos($title, 'course-hero__title-accent') !== false) {
+        return $title;
+    }
+    if (stripos($title, 'Job Transformation') === false) {
+        return $title;
+    }
+    return preg_replace(
+        '/(Job Transformation)/i',
+        '<span class="course-hero__title-accent">$1</span>',
+        $title,
+        1
+    );
+}
+
+function jrc_faq_lines_to_array($text, $fallback)
+{
+    $lines = preg_split('/\r\n|\r|\n/', (string) $text);
+    $items = [];
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $line, 2));
+        if (count($parts) < 2) {
+            $parts = array_map('trim', explode(' - ', $line, 2));
+        }
+        if (count($parts) < 2) {
+            continue;
+        }
+        $items[] = ['q' => $parts[0], 'a' => $parts[1]];
+    }
+
+    return $items ?: $fallback;
+}
+
+function jrc_get_course_options()
+{
+    $stored = (array) get_option('jrc_options', []);
+
+    $default_options = jrc_get_default_course_options();
+
+    $options = array_merge($default_options, $stored);
+
+    foreach ($default_options as $key => $default_value) {
+        if (!array_key_exists($key, $options)) {
+            continue;
+        }
+        if (jrc_is_placeholder_value($options[$key]) && !jrc_is_placeholder_value($default_value)) {
+            $options[$key] = $default_value;
+        }
+    }
+
+    if (jrc_is_google_form_link($options['cta_apply_link'] ?? '')) {
+        $options['cta_apply_link'] = $default_options['cta_apply_link'];
+    }
+
+    return $options;
+}
+
+function jrc_get_course_data()
+{
+    $defaults = jrc_get_default_course_data();
+    $options = jrc_get_course_options();
+
+    $course = $defaults;
+
+    $course['hero'] = array_replace_recursive($defaults['hero'], [
+        'title' => $options['hero_title'],
+        'subtitle' => $options['hero_subtitle'],
+        'note' => $options['hero_note'],
+        'ctas' => [
+            [
+                'label' => $options['cta_apply_label'],
+                'link' => $options['cta_apply_link'],
+                'class' => 'primary-btn',
+            ],
+        ],
+        'card' => [
+            'Start Date' => $options['hero_card_start_date'],
+            'Batch Size' => $options['hero_card_seat_limit'],
+            'Fee From' => $options['hero_card_fee_from'],
+            'Mode' => $options['hero_card_mode'],
+        ],
+    ]);
+
+    $course['quiz_cta'] = [
+        'label' => $options['quiz_cta_label'],
+        'link' => $options['quiz_cta_link'],
+    ];
+
+    $course['audience'] = [
+        'title' => $options['audience_title'],
+        'items' => jrc_lines_to_array($options['audience_items']) ?: $defaults['audience']['items'],
+    ];
+
+    $course['learning'] = [
+        'title' => $options['learning_title'],
+        'subtitle' => $options['learning_subtitle'],
+        'tracks' => [
+            [
+                'title' => $options['flutter_title'],
+                'items' => jrc_lines_to_array($options['flutter_items']) ?: $defaults['learning']['tracks'][0]['items'],
+            ],
+            [
+                'title' => $options['react_title'],
+                'items' => jrc_lines_to_array($options['react_items']) ?: $defaults['learning']['tracks'][1]['items'],
+            ],
+            [
+                'title' => $options['ai_track_title'],
+                'items' => jrc_lines_to_array($options['ai_track_items']) ?: $defaults['learning']['tracks'][2]['items'],
+            ],
+            [
+                'title' => $options['job_prep_title'],
+                'items' => jrc_lines_to_array($options['job_prep_items']) ?: $defaults['learning']['tracks'][3]['items'],
+            ],
+        ],
+    ];
+
+    $course['ai_usage'] = [
+        'title' => $options['ai_section_title'],
+        'rules' => jrc_lines_to_array($options['ai_rules']) ?: $defaults['ai_usage']['rules'],
+        'good' => jrc_lines_to_array($options['ai_good']) ?: $defaults['ai_usage']['good'],
+        'bad' => jrc_lines_to_array($options['ai_bad']) ?: $defaults['ai_usage']['bad'],
+        'cta' => [
+            'title' => $options['ai_cta_title'],
+            'subtitle' => $options['ai_cta_subtitle'],
+        ],
+    ];
+
+    $course['details'] = [
+        'title' => $options['details_title'],
+        'items' => [
+            'Duration' => $options['details_duration'],
+            'Class Days/Week' => $options['details_days'],
+            'Mode' => $options['details_mode'],
+            'Language' => $options['details_language'],
+            'Batch Size' => $options['details_batch'],
+            'Start Date' => $options['details_start_date'],
+            'Class Time' => $options['details_class_time'],
+        ],
+    ];
+
+    $course['fee'] = [
+        'title' => $options['fee_title'],
+        'standard' => $options['fee_standard'],
+        'early' => $options['fee_early'],
+        'installment' => $options['fee_installment'],
+        'note' => $options['fee_note'],
+    ];
+
+    $course['mentor'] = [
+        'title' => $options['mentor_title'],
+        'bio' => $options['mentor_bio'],
+    ];
+
+    $course['mentors'] = array_replace_recursive($defaults['mentors'], [
+        'enabled' => !empty($options['mentors_enabled']),
+        'title' => $options['mentors_title'],
+        'subtitle' => $options['mentors_subtitle'],
+        'items' => jrc_parse_mentor_items($options['mentor_items'], $defaults['mentors']['items']),
+    ]);
+
+    $course['faq'] = jrc_faq_lines_to_array($options['faq_items'], $defaults['faq']);
+    $course['faq_title'] = $options['faq_title'];
+    $course['final_cta'] = [
+        'title' => $options['final_title'],
+        'subtitle' => $options['final_subtitle'],
+    ];
+
+    $course['whatsapp'] = [
+        'group_link' => $options['whatsapp_group_link'],
+        'number' => $options['whatsapp_number'],
+        'note' => $options['whatsapp_note'],
+        'group_label' => $options['whatsapp_group_label'],
+        'contact_label' => $options['whatsapp_contact_label'],
+    ];
+
+    if (empty($course['enrollment']['website']['link'])) {
+        $course['enrollment']['website']['link'] = $options['cta_apply_link'];
+    }
+
+    $start_date = $options['details_start_date'];
+    if (jrc_is_placeholder_value($start_date)) {
+        $start_date = $options['hero_card_start_date'];
+    }
+
+    $seat_limit_total = $options['hero_card_seat_limit'];
+    if (jrc_is_placeholder_value($seat_limit_total) || $seat_limit_total === '') {
+        $seat_limit_total = $options['details_batch'];
+    }
+    $booked_seats = $options['booked_seats'] ?? 0;
+    $remaining_seats = jrc_get_remaining_seats($seat_limit_total, $booked_seats);
+    $course['hero']['booked_seats'] = (int) $booked_seats;
+    $course['hero']['remaining_seats'] = $remaining_seats;
+
+    $replacements = [
+        '{{WEBSITE_ENROLL_LINK}}' => $options['cta_apply_link'],
+        '{{START_DATE}}' => $start_date,
+        '{{SEAT_LIMIT}}' => $remaining_seats,
+        '{{SEAT_LIMIT_TOTAL}}' => $seat_limit_total,
+        '{{SEAT_REMAINING}}' => $remaining_seats,
+        '{{EARLY_BIRD_FEE}}' => $options['fee_early'],
+        '{{REGULAR_FEE}}' => $options['fee_standard'],
+        '{{DELIVERY_MODE}}' => $options['details_mode'],
+        '{{CLASS_SCHEDULE}}' => $options['details_days'],
+        '{{BATCH_DURATION}}' => $options['details_duration'],
+        '{{CLASS_TIME_OPTIONS}}' => $options['details_class_time'],
+        '{{EARLY_BIRD_DEADLINE}}' => $options['early_bird_deadline'] ?? '',
+        '{{INSTALLMENT_OPTION}}' => $options['fee_installment'],
+        '{{LAPTOP_REQUIREMENT}}' => $options['laptop_requirement'] ?? '',
+        '{{AI_TOOLS_LIST}}' => $options['ai_tools_list'] ?? '',
+        '{{REFUND_POLICY}}' => $options['refund_policy'] ?? '',
+        '{{FOUNDATION_WEEKS}}' => $options['foundation_weeks'] ?? '',
+        '{{TRACK_WEEKS}}' => $options['track_weeks'] ?? '',
+        '{{INTERVIEW_WEEKS}}' => $options['interview_weeks'] ?? '',
+        '{{PROJECT_1}}' => $options['project_1'] ?? '',
+        '{{PROJECT_2}}' => $options['project_2'] ?? '',
+        '{{PROJECT_3}}' => $options['project_3'] ?? '',
+        '{{PROJECT_4}}' => $options['project_4'] ?? '',
+        '{{PROJECT_5}}' => $options['project_5'] ?? '',
+    ];
+
+    $replacements = array_filter($replacements, function ($value) {
+        return $value !== '' && !jrc_is_placeholder_value($value);
+    });
+
+    return jrc_replace_placeholders_recursive($course, $replacements);
+}
+
+function jrc_sanitize_options($input)
+{
+    $sanitized = [];
+    foreach ((array) $input as $key => $value) {
+        if (str_contains($key, '_link')) {
+            $sanitized[$key] = jrc_sanitize_course_link($value);
+            continue;
+        }
+        if ($key === 'hero_title') {
+            $sanitized[$key] = jrc_sanitize_hero_title($value);
+            continue;
+        }
+        $sanitized[$key] = sanitize_textarea_field($value);
+    }
+    return $sanitized;
+}
+
+function jrc_sanitize_hero_title($value)
+{
+    $allowed = [
+        'span' => [
+            'class' => true,
+        ],
+        'strong' => [],
+        'em' => [],
+        'br' => [],
+    ];
+    return wp_kses($value, $allowed);
+}
+
+add_action('admin_menu', function () {
+    add_menu_page(
+        'Job Ready Course',
+        'Job Ready Course',
+        'manage_options',
+        'jrc-options',
+        'jrc_render_options_page',
+        'dashicons-welcome-learn-more',
+        62
+    );
+    add_submenu_page(
+        'jrc-options',
+        'Job Ready Course Options',
+        'Options',
+        'manage_options',
+        'jrc-options',
+        'jrc_render_options_page'
+    );
+    add_submenu_page(
+        'jrc-options',
+        'Basic Test Submissions',
+        'Basic Test Submissions',
+        'manage_options',
+        'edit.php?post_type=jrc_quiz_attempt'
+    );
+});
+
+add_action('admin_init', function () {
+    register_setting('jrc_options_group', 'jrc_options', [
+        'sanitize_callback' => 'jrc_sanitize_options',
+    ]);
+});
+
+function jrc_render_options_page()
+{
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    $options = jrc_get_course_options();
+    $seat_limit_total = $options['hero_card_seat_limit'] ?? '';
+    if (jrc_is_placeholder_value($seat_limit_total) || $seat_limit_total === '') {
+        $seat_limit_total = $options['details_batch'] ?? 0;
+    }
+    $remaining_seats = jrc_get_remaining_seats($seat_limit_total, $options['booked_seats'] ?? 0);
+    ?>
+    <div class="wrap">
+        <h1>Job Ready Course Options</h1>
+        <form method="post" action="options.php">
+            <?php settings_fields('jrc_options_group'); ?>
+            <table class="form-table" role="presentation">
+                <tr><th scope="row">Hero Title</th><td><input class="regular-text" type="text" name="jrc_options[hero_title]" value="<?php echo esc_attr($options['hero_title']); ?>"></td></tr>
+                <tr><th scope="row">Hero Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[hero_subtitle]"><?php echo esc_textarea($options['hero_subtitle']); ?></textarea></td></tr>
+                <tr><th scope="row">Hero Note (extra)</th><td><textarea class="large-text" rows="2" name="jrc_options[hero_note]"><?php echo esc_textarea($options['hero_note']); ?></textarea></td></tr>
+                <tr><th scope="row">Enroll Button Label</th><td><input class="regular-text" type="text" name="jrc_options[cta_apply_label]" value="<?php echo esc_attr($options['cta_apply_label']); ?>"></td></tr>
+                <tr><th scope="row">Enroll Button Link</th><td><input class="regular-text" type="url" name="jrc_options[cta_apply_link]" value="<?php echo esc_url($options['cta_apply_link']); ?>"></td></tr>
+                <tr><th scope="row">Basic Test Button Label</th><td><input class="regular-text" type="text" name="jrc_options[quiz_cta_label]" value="<?php echo esc_attr($options['quiz_cta_label']); ?>"></td></tr>
+                <tr><th scope="row">Basic Test Button Link</th><td><input class="regular-text" type="url" name="jrc_options[quiz_cta_link]" value="<?php echo esc_url($options['quiz_cta_link']); ?>"></td></tr>
+                <tr><th scope="row">Hero Card: Start Date</th><td><input class="regular-text" type="text" name="jrc_options[hero_card_start_date]" value="<?php echo esc_attr($options['hero_card_start_date']); ?>"></td></tr>
+                <tr><th scope="row">Hero Card: Seat Limit</th><td><input class="regular-text" type="text" name="jrc_options[hero_card_seat_limit]" value="<?php echo esc_attr($options['hero_card_seat_limit']); ?>"></td></tr>
+                <tr><th scope="row">Reserved Seats (Pre-booking)</th><td><input class="regular-text" type="text" name="jrc_options[booked_seats]" value="<?php echo esc_attr($options['booked_seats']); ?>"></td></tr>
+                <tr><th scope="row">Remaining Seats</th><td><input class="regular-text" type="text" value="<?php echo esc_attr($remaining_seats); ?>" readonly></td></tr>
+                <tr><th scope="row">Hero Card: Fee From</th><td><input class="regular-text" type="text" name="jrc_options[hero_card_fee_from]" value="<?php echo esc_attr($options['hero_card_fee_from']); ?>"></td></tr>
+                <tr><th scope="row">Hero Card: Mode</th><td><input class="regular-text" type="text" name="jrc_options[hero_card_mode]" value="<?php echo esc_attr($options['hero_card_mode']); ?>"></td></tr>
+
+                <tr><th scope="row">Audience Title</th><td><input class="regular-text" type="text" name="jrc_options[audience_title]" value="<?php echo esc_attr($options['audience_title']); ?>"></td></tr>
+                <tr><th scope="row">Audience Items</th><td><textarea class="large-text" rows="4" name="jrc_options[audience_items]"><?php echo esc_textarea($options['audience_items']); ?></textarea><p class="description">One item per line.</p></td></tr>
+
+                <tr><th scope="row">Learning Title</th><td><input class="regular-text" type="text" name="jrc_options[learning_title]" value="<?php echo esc_attr($options['learning_title']); ?>"></td></tr>
+                <tr><th scope="row">Learning Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[learning_subtitle]"><?php echo esc_textarea($options['learning_subtitle']); ?></textarea></td></tr>
+                <tr><th scope="row">Flutter Title</th><td><input class="regular-text" type="text" name="jrc_options[flutter_title]" value="<?php echo esc_attr($options['flutter_title']); ?>"></td></tr>
+                <tr><th scope="row">Flutter Items</th><td><textarea class="large-text" rows="4" name="jrc_options[flutter_items]"><?php echo esc_textarea($options['flutter_items']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">React Title</th><td><input class="regular-text" type="text" name="jrc_options[react_title]" value="<?php echo esc_attr($options['react_title']); ?>"></td></tr>
+                <tr><th scope="row">React Items</th><td><textarea class="large-text" rows="4" name="jrc_options[react_items]"><?php echo esc_textarea($options['react_items']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">AI Track Title</th><td><input class="regular-text" type="text" name="jrc_options[ai_track_title]" value="<?php echo esc_attr($options['ai_track_title']); ?>"></td></tr>
+                <tr><th scope="row">AI Track Items</th><td><textarea class="large-text" rows="4" name="jrc_options[ai_track_items]"><?php echo esc_textarea($options['ai_track_items']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">Job Prep Title</th><td><input class="regular-text" type="text" name="jrc_options[job_prep_title]" value="<?php echo esc_attr($options['job_prep_title']); ?>"></td></tr>
+                <tr><th scope="row">Job Prep Items</th><td><textarea class="large-text" rows="4" name="jrc_options[job_prep_items]"><?php echo esc_textarea($options['job_prep_items']); ?></textarea><p class="description">One item per line.</p></td></tr>
+
+                <tr><th scope="row">AI Section Title</th><td><input class="regular-text" type="text" name="jrc_options[ai_section_title]" value="<?php echo esc_attr($options['ai_section_title']); ?>"></td></tr>
+                <tr><th scope="row">AI Rules</th><td><textarea class="large-text" rows="4" name="jrc_options[ai_rules]"><?php echo esc_textarea($options['ai_rules']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">AI Good Examples</th><td><textarea class="large-text" rows="4" name="jrc_options[ai_good]"><?php echo esc_textarea($options['ai_good']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">AI Bad Examples</th><td><textarea class="large-text" rows="3" name="jrc_options[ai_bad]"><?php echo esc_textarea($options['ai_bad']); ?></textarea><p class="description">One item per line.</p></td></tr>
+                <tr><th scope="row">AI CTA Title</th><td><input class="regular-text" type="text" name="jrc_options[ai_cta_title]" value="<?php echo esc_attr($options['ai_cta_title']); ?>"></td></tr>
+                <tr><th scope="row">AI CTA Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[ai_cta_subtitle]"><?php echo esc_textarea($options['ai_cta_subtitle']); ?></textarea></td></tr>
+
+                <tr><th scope="row">Details Title</th><td><input class="regular-text" type="text" name="jrc_options[details_title]" value="<?php echo esc_attr($options['details_title']); ?>"></td></tr>
+                <tr><th scope="row">Duration</th><td><input class="regular-text" type="text" name="jrc_options[details_duration]" value="<?php echo esc_attr($options['details_duration']); ?>"></td></tr>
+                <tr><th scope="row">Class Days/Week</th><td><input class="regular-text" type="text" name="jrc_options[details_days]" value="<?php echo esc_attr($options['details_days']); ?>"></td></tr>
+                <tr><th scope="row">Mode</th><td><input class="regular-text" type="text" name="jrc_options[details_mode]" value="<?php echo esc_attr($options['details_mode']); ?>"></td></tr>
+                <tr><th scope="row">Language</th><td><input class="regular-text" type="text" name="jrc_options[details_language]" value="<?php echo esc_attr($options['details_language']); ?>"></td></tr>
+                <tr><th scope="row">Batch Size</th><td><input class="regular-text" type="text" name="jrc_options[details_batch]" value="<?php echo esc_attr($options['details_batch']); ?>"></td></tr>
+                <tr><th scope="row">Start Date</th><td><input class="regular-text" type="text" name="jrc_options[details_start_date]" value="<?php echo esc_attr($options['details_start_date']); ?>"></td></tr>
+                <tr><th scope="row">Class Time</th><td><input class="regular-text" type="text" name="jrc_options[details_class_time]" value="<?php echo esc_attr($options['details_class_time']); ?>"></td></tr>
+
+                <tr><th scope="row">Fee Title</th><td><input class="regular-text" type="text" name="jrc_options[fee_title]" value="<?php echo esc_attr($options['fee_title']); ?>"></td></tr>
+                <tr><th scope="row">Standard Fee</th><td><input class="regular-text" type="text" name="jrc_options[fee_standard]" value="<?php echo esc_attr($options['fee_standard']); ?>"></td></tr>
+                <tr><th scope="row">Early Bird Fee</th><td><input class="regular-text" type="text" name="jrc_options[fee_early]" value="<?php echo esc_attr($options['fee_early']); ?>"></td></tr>
+                <tr><th scope="row">Installment Line</th><td><input class="regular-text" type="text" name="jrc_options[fee_installment]" value="<?php echo esc_attr($options['fee_installment']); ?>"></td></tr>
+                <tr><th scope="row">Fee Note (extra)</th><td><textarea class="large-text" rows="2" name="jrc_options[fee_note]"><?php echo esc_textarea($options['fee_note']); ?></textarea></td></tr>
+                <tr><th scope="row">Early Bird Deadline</th><td><input class="regular-text" type="text" name="jrc_options[early_bird_deadline]" value="<?php echo esc_attr($options['early_bird_deadline']); ?>"></td></tr>
+                <tr><th scope="row">Laptop Requirement</th><td><input class="regular-text" type="text" name="jrc_options[laptop_requirement]" value="<?php echo esc_attr($options['laptop_requirement']); ?>"></td></tr>
+                <tr><th scope="row">AI Tools List</th><td><input class="regular-text" type="text" name="jrc_options[ai_tools_list]" value="<?php echo esc_attr($options['ai_tools_list']); ?>"></td></tr>
+                <tr><th scope="row">Refund Policy</th><td><input class="regular-text" type="text" name="jrc_options[refund_policy]" value="<?php echo esc_attr($options['refund_policy']); ?>"></td></tr>
+                <tr><th scope="row">Foundation Weeks</th><td><input class="regular-text" type="text" name="jrc_options[foundation_weeks]" value="<?php echo esc_attr($options['foundation_weeks']); ?>"></td></tr>
+                <tr><th scope="row">Primary Track Weeks</th><td><input class="regular-text" type="text" name="jrc_options[track_weeks]" value="<?php echo esc_attr($options['track_weeks']); ?>"></td></tr>
+                <tr><th scope="row">Interview Weeks</th><td><input class="regular-text" type="text" name="jrc_options[interview_weeks]" value="<?php echo esc_attr($options['interview_weeks']); ?>"></td></tr>
+                <tr><th scope="row">Project 1</th><td><input class="regular-text" type="text" name="jrc_options[project_1]" value="<?php echo esc_attr($options['project_1']); ?>"></td></tr>
+                <tr><th scope="row">Project 2</th><td><input class="regular-text" type="text" name="jrc_options[project_2]" value="<?php echo esc_attr($options['project_2']); ?>"></td></tr>
+                <tr><th scope="row">Project 3</th><td><input class="regular-text" type="text" name="jrc_options[project_3]" value="<?php echo esc_attr($options['project_3']); ?>"></td></tr>
+                <tr><th scope="row">Project 4</th><td><input class="regular-text" type="text" name="jrc_options[project_4]" value="<?php echo esc_attr($options['project_4']); ?>"></td></tr>
+                <tr><th scope="row">Project 5</th><td><input class="regular-text" type="text" name="jrc_options[project_5]" value="<?php echo esc_attr($options['project_5']); ?>"></td></tr>
+
+                <tr><th scope="row" colspan="2"><h2>WhatsApp</h2></th></tr>
+                <tr><th scope="row">WhatsApp Group Link</th><td><input class="regular-text" type="url" name="jrc_options[whatsapp_group_link]" value="<?php echo esc_url($options['whatsapp_group_link']); ?>"></td></tr>
+                <tr><th scope="row">WhatsApp Number</th><td><input class="regular-text" type="text" name="jrc_options[whatsapp_number]" value="<?php echo esc_attr($options['whatsapp_number']); ?>"></td></tr>
+                <tr><th scope="row">WhatsApp Note</th><td><textarea class="large-text" rows="2" name="jrc_options[whatsapp_note]"><?php echo esc_textarea($options['whatsapp_note']); ?></textarea></td></tr>
+                <tr><th scope="row">WhatsApp Group Label</th><td><input class="regular-text" type="text" name="jrc_options[whatsapp_group_label]" value="<?php echo esc_attr($options['whatsapp_group_label']); ?>"></td></tr>
+                <tr><th scope="row">WhatsApp Contact Label</th><td><input class="regular-text" type="text" name="jrc_options[whatsapp_contact_label]" value="<?php echo esc_attr($options['whatsapp_contact_label']); ?>"></td></tr>
+
+                <tr><th scope="row" colspan="2"><h2>Basic Test</h2></th></tr>
+                <tr><th scope="row">Quiz Title</th><td><input class="regular-text" type="text" name="jrc_options[quiz_title]" value="<?php echo esc_attr($options['quiz_title']); ?>"></td></tr>
+                <tr><th scope="row">Quiz Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[quiz_subtitle]"><?php echo esc_textarea($options['quiz_subtitle']); ?></textarea></td></tr>
+                <tr><th scope="row">Discount Note</th><td><input class="regular-text" type="text" name="jrc_options[quiz_discount_note]" value="<?php echo esc_attr($options['quiz_discount_note']); ?>"></td></tr>
+                <tr><th scope="row">Time Limit (minutes)</th><td><input class="small-text" type="number" min="0" name="jrc_options[quiz_time_limit]" value="<?php echo esc_attr($options['quiz_time_limit']); ?>"></td></tr>
+                <tr><th scope="row">Pass Percent</th><td><input class="small-text" type="number" min="0" max="100" name="jrc_options[quiz_pass_percent]" value="<?php echo esc_attr($options['quiz_pass_percent']); ?>"></td></tr>
+                <tr><th scope="row">Pass Redirect Link</th><td><input class="regular-text" type="url" name="jrc_options[quiz_pass_redirect_link]" value="<?php echo esc_url($options['quiz_pass_redirect_link']); ?>"></td></tr>
+                <tr><th scope="row">Coupon Code</th><td><input class="regular-text" type="text" name="jrc_options[quiz_coupon_code]" value="<?php echo esc_attr($options['quiz_coupon_code']); ?>"></td></tr>
+                <tr><th scope="row">Coupon Param</th><td><input class="small-text" type="text" name="jrc_options[quiz_coupon_param]" value="<?php echo esc_attr($options['quiz_coupon_param']); ?>"></td></tr>
+                <tr><th scope="row">Quiz Questions</th>
+                    <td>
+                        <?php
+                        $quiz_questions = jrc_parse_quiz_questions($options['quiz_questions'] ?? '', jrc_get_default_quiz_questions());
+                        $quiz_questions_json = wp_json_encode($quiz_questions);
+                        $quiz_default_json = wp_json_encode(jrc_get_default_quiz_questions());
+                        ?>
+                        <div id="jrc-quiz-builder" style="display:grid; gap:16px;"></div>
+                        <p>
+                            <button type="button" class="button" id="jrc-quiz-add">Add Question</button>
+                            <button type="button" class="button" id="jrc-quiz-reset">Reset to Default</button>
+                        </p>
+                        <textarea id="jrc-quiz-questions" name="jrc_options[quiz_questions]" class="large-text code" rows="6" style="display:none;"><?php echo esc_textarea($quiz_questions_json); ?></textarea>
+                        <script>
+                            (function () {
+                                var builder = document.getElementById('jrc-quiz-builder');
+                                var textarea = document.getElementById('jrc-quiz-questions');
+                                var addBtn = document.getElementById('jrc-quiz-add');
+                                var resetBtn = document.getElementById('jrc-quiz-reset');
+                                if (!builder || !textarea || !addBtn) {
+                                    return;
+                                }
+
+                                var defaults = <?php echo $quiz_default_json; ?>;
+                                var questions = [];
+                                try {
+                                    questions = JSON.parse(textarea.value || '[]');
+                                } catch (e) {
+                                    questions = [];
+                                }
+                                if (!Array.isArray(questions) || !questions.length) {
+                                    questions = defaults.slice();
+                                }
+
+                                var languages = ['C', 'JavaScript', 'Dart'];
+                                var types = [
+                                    { value: 'mcq', label: 'MCQ' },
+                                    { value: 'short', label: 'Short' },
+                                    { value: 'output', label: 'Output' }
+                                ];
+
+                                function serialize() {
+                                    textarea.value = JSON.stringify(questions);
+                                }
+
+                                function render() {
+                                    builder.innerHTML = '';
+                                    questions.forEach(function (q, index) {
+                                        var row = document.createElement('div');
+                                        row.className = 'jrc-quiz-row';
+                                        row.style.border = '1px solid #ccd0d4';
+                                        row.style.borderRadius = '8px';
+                                        row.style.padding = '12px';
+                                        row.style.background = '#fff';
+
+                                        var optionsValue = Array.isArray(q.options) ? q.options.join(' | ') : '';
+
+                                        row.innerHTML =
+                                            '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+                                            '<strong>Question ' + (index + 1) + '</strong>' +
+                                            '<button type="button" class="button-link-delete" data-action="remove" data-index="' + index + '">Remove</button>' +
+                                            '</div>' +
+                                            '<div style="display:grid;gap:10px;margin-top:10px;">' +
+                                            '<label>Language ' + buildSelect('language', languages, q.language || 'C', index) + '</label>' +
+                                            '<label>Type ' + buildSelect('type', types, q.type || 'mcq', index) + '</label>' +
+                                            '<label>Points <input type="number" min="1" value="' + (q.points || 1) + '" data-field="points" data-index="' + index + '"></label>' +
+                                            '<label>Question<textarea rows="2" data-field="question" data-index="' + index + '" style="width:100%;">' + escapeHtml(q.question || '') + '</textarea></label>' +
+                                            '<label>Options (for MCQ, use | )<input type="text" data-field="options" data-index="' + index + '" value="' + escapeAttr(optionsValue) + '"></label>' +
+                                            '<label>Answer (use | for multiple)<input type="text" data-field="answer" data-index="' + index + '" value="' + escapeAttr(q.answer || '') + '"></label>' +
+                                            '</div>';
+
+                                        builder.appendChild(row);
+                                    });
+                                }
+
+                                function buildSelect(field, items, selected, index) {
+                                    var html = '<select data-field="' + field + '" data-index="' + index + '">';
+                                    items.forEach(function (item) {
+                                        var value = typeof item === 'string' ? item : item.value;
+                                        var label = typeof item === 'string' ? item : item.label;
+                                        var isSelected = value === selected ? ' selected' : '';
+                                        html += '<option value="' + escapeAttr(value) + '"' + isSelected + '>' + escapeHtml(label) + '</option>';
+                                    });
+                                    html += '</select>';
+                                    return html;
+                                }
+
+                                function escapeHtml(text) {
+                                    return String(text || '').replace(/[&<>"]/g, function (char) {
+                                        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char];
+                                    });
+                                }
+
+                                function escapeAttr(text) {
+                                    return String(text || '').replace(/"/g, '&quot;');
+                                }
+
+                                builder.addEventListener('input', function (event) {
+                                    var target = event.target;
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    var field = target.getAttribute('data-field');
+                                    if (Number.isNaN(index) || !field || !questions[index]) {
+                                        return;
+                                    }
+
+                                    if (field === 'options') {
+                                        questions[index].options = target.value
+                                            .split('|')
+                                            .map(function (item) { return item.trim(); })
+                                            .filter(Boolean);
+                                    } else if (field === 'points') {
+                                        questions[index].points = parseInt(target.value, 10) || 1;
+                                    } else {
+                                        questions[index][field] = target.value;
+                                    }
+
+                                    serialize();
+                                });
+
+                                builder.addEventListener('change', function (event) {
+                                    var target = event.target;
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    var field = target.getAttribute('data-field');
+                                    if (Number.isNaN(index) || !field || !questions[index]) {
+                                        return;
+                                    }
+                                    questions[index][field] = target.value;
+                                    serialize();
+                                });
+
+                                builder.addEventListener('click', function (event) {
+                                    var target = event.target;
+                                    if (target.getAttribute('data-action') !== 'remove') {
+                                        return;
+                                    }
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    if (!Number.isNaN(index)) {
+                                        questions.splice(index, 1);
+                                        render();
+                                        serialize();
+                                    }
+                                });
+
+                                addBtn.addEventListener('click', function () {
+                                    questions.push({
+                                        language: 'C',
+                                        type: 'mcq',
+                                        question: '',
+                                        options: [],
+                                        answer: '',
+                                        points: 1
+                                    });
+                                    render();
+                                    serialize();
+                                });
+
+                                if (resetBtn) {
+                                    resetBtn.addEventListener('click', function () {
+                                        questions = defaults.slice();
+                                        render();
+                                        serialize();
+                                    });
+                                }
+
+                                render();
+                                serialize();
+                            })();
+                        </script>
+                    </td>
+                </tr>
+
+                <tr>
+                    <th scope="row">Show Mentor Panel</th>
+                    <td>
+                        <input type="hidden" name="jrc_options[mentors_enabled]" value="0">
+                        <label>
+                            <input type="checkbox" name="jrc_options[mentors_enabled]" value="1" <?php checked(!empty($options['mentors_enabled'])); ?>>
+                            Enable mentors section
+                        </label>
+                    </td>
+                </tr>
+                <tr><th scope="row">Mentor Panel Title</th><td><input class="regular-text" type="text" name="jrc_options[mentors_title]" value="<?php echo esc_attr($options['mentors_title']); ?>"></td></tr>
+                <tr><th scope="row">Mentor Panel Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[mentors_subtitle]"><?php echo esc_textarea($options['mentors_subtitle']); ?></textarea></td></tr>
+                <tr>
+                    <th scope="row">Mentor Items</th>
+                    <td>
+                        <div id="jrc-mentor-builder" style="display:grid; gap:16px;"></div>
+                        <p>
+                            <button type="button" class="button" id="jrc-mentor-add">Add Mentor</button>
+                        </p>
+                        <textarea id="jrc-mentor-items" name="jrc_options[mentor_items]" class="large-text code" rows="6" style="display:none;"><?php echo esc_textarea($options['mentor_items']); ?></textarea>
+                        <p class="description">Stored as: Name | Role | Experience | Specialization | Real Projects | LinkedIn | GitHub | Message | Enabled (1/0)</p>
+                        <script>
+                            (function () {
+                                var builder = document.getElementById('jrc-mentor-builder');
+                                var textarea = document.getElementById('jrc-mentor-items');
+                                var addBtn = document.getElementById('jrc-mentor-add');
+                                if (!builder || !textarea || !addBtn) {
+                                    return;
+                                }
+
+                                function normalize(value) {
+                                    return String(value || '').replace(/\r?\n/g, ' ').trim();
+                                }
+
+                                function parseEnabled(value) {
+                                    var key = String(value || '').trim().toLowerCase();
+                                    var map = {
+                                        '1': true,
+                                        'true': true,
+                                        'yes': true,
+                                        'on': true,
+                                        'enabled': true,
+                                        '0': false,
+                                        'false': false,
+                                        'no': false,
+                                        'off': false,
+                                        'disabled': false
+                                    };
+                                    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : null;
+                                }
+
+                                function parseLine(line) {
+                                    var parts = String(line || '')
+                                        .split('|')
+                                        .map(function (item) { return item.trim(); })
+                                        .filter(function (item, index, arr) { return !(item === '' && index === arr.length - 1); });
+
+                                    var enabled = true;
+                                    if (parts.length > 8) {
+                                        var parsed = parseEnabled(parts[parts.length - 1]);
+                                        if (parsed !== null) {
+                                            enabled = parsed;
+                                            parts.pop();
+                                        }
+                                    }
+
+                                    var message = '';
+                                    if (parts.length > 7) {
+                                        message = parts.slice(7).join(' | ');
+                                    }
+
+                                    return {
+                                        enabled: enabled,
+                                        name: parts[0] || '',
+                                        role: parts[1] || '',
+                                        experience: parts[2] || '',
+                                        specialization: parts[3] || '',
+                                        projects: parts[4] || '',
+                                        linkedin: parts[5] || '',
+                                        github: parts[6] || '',
+                                        message: message
+                                    };
+                                }
+
+                                function parseLines(text) {
+                                    return String(text || '')
+                                        .split(/\r?\n/)
+                                        .map(function (line) { return line.trim(); })
+                                        .filter(Boolean)
+                                        .map(parseLine);
+                                }
+
+                                var mentors = parseLines(textarea.value);
+
+                                function isEmpty(mentor) {
+                                    return !normalize(mentor.name)
+                                        && !normalize(mentor.role)
+                                        && !normalize(mentor.experience)
+                                        && !normalize(mentor.specialization)
+                                        && !normalize(mentor.projects)
+                                        && !normalize(mentor.linkedin)
+                                        && !normalize(mentor.github)
+                                        && !normalize(mentor.message);
+                                }
+
+                                function serialize() {
+                                    var lines = mentors
+                                        .filter(function (mentor) { return !isEmpty(mentor); })
+                                        .map(function (mentor) {
+                                            var parts = [
+                                                normalize(mentor.name),
+                                                normalize(mentor.role),
+                                                normalize(mentor.experience),
+                                                normalize(mentor.specialization),
+                                                normalize(mentor.projects),
+                                                normalize(mentor.linkedin),
+                                                normalize(mentor.github),
+                                                normalize(mentor.message)
+                                            ];
+                                            return parts.join(' | ') + ' | ' + (mentor.enabled ? '1' : '0');
+                                        });
+                                    textarea.value = lines.join('\n');
+                                }
+
+                                function escapeHtml(text) {
+                                    return String(text || '').replace(/[&<>"]/g, function (char) {
+                                        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char];
+                                    });
+                                }
+
+                                function escapeAttr(text) {
+                                    return String(text || '').replace(/"/g, '&quot;');
+                                }
+
+                                function render() {
+                                    builder.innerHTML = '';
+                                    mentors.forEach(function (mentor, index) {
+                                        var row = document.createElement('div');
+                                        row.style.border = '1px solid #ccd0d4';
+                                        row.style.borderRadius = '8px';
+                                        row.style.padding = '12px';
+                                        row.style.background = '#fff';
+
+                                        row.innerHTML =
+                                            '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+                                            '<strong>Mentor ' + (index + 1) + '</strong>' +
+                                            '<div style="display:flex;align-items:center;gap:12px;">' +
+                                            '<label style="display:flex;align-items:center;gap:6px;">' +
+                                            '<input type="checkbox" data-field="enabled" data-index="' + index + '"' + (mentor.enabled ? ' checked' : '') + '>' +
+                                            'Enabled</label>' +
+                                            '<button type="button" class="button-link-delete" data-action="remove" data-index="' + index + '">Remove</button>' +
+                                            '</div>' +
+                                            '</div>' +
+                                            '<div style="display:grid;gap:10px;margin-top:10px;">' +
+                                            '<label>Name <input type="text" data-field="name" data-index="' + index + '" value="' + escapeAttr(mentor.name) + '"></label>' +
+                                            '<label>Role <input type="text" data-field="role" data-index="' + index + '" value="' + escapeAttr(mentor.role) + '"></label>' +
+                                            '<label>Experience <input type="text" data-field="experience" data-index="' + index + '" value="' + escapeAttr(mentor.experience) + '"></label>' +
+                                            '<label>Specialization <input type="text" data-field="specialization" data-index="' + index + '" value="' + escapeAttr(mentor.specialization) + '"></label>' +
+                                            '<label>Real Projects <input type="text" data-field="projects" data-index="' + index + '" value="' + escapeAttr(mentor.projects) + '"></label>' +
+                                            '<label>LinkedIn <input type="text" data-field="linkedin" data-index="' + index + '" value="' + escapeAttr(mentor.linkedin) + '"></label>' +
+                                            '<label>GitHub <input type="text" data-field="github" data-index="' + index + '" value="' + escapeAttr(mentor.github) + '"></label>' +
+                                            '<label>Message<textarea rows="2" data-field="message" data-index="' + index + '" style="width:100%;">' + escapeHtml(mentor.message) + '</textarea></label>' +
+                                            '</div>';
+
+                                        builder.appendChild(row);
+                                    });
+                                }
+
+                                builder.addEventListener('input', function (event) {
+                                    var target = event.target;
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    var field = target.getAttribute('data-field');
+                                    if (Number.isNaN(index) || !field || !mentors[index]) {
+                                        return;
+                                    }
+                                    if (field === 'enabled') {
+                                        mentors[index].enabled = target.checked;
+                                    } else {
+                                        mentors[index][field] = target.value;
+                                    }
+                                    serialize();
+                                });
+
+                                builder.addEventListener('change', function (event) {
+                                    var target = event.target;
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    var field = target.getAttribute('data-field');
+                                    if (Number.isNaN(index) || !field || !mentors[index]) {
+                                        return;
+                                    }
+                                    if (field === 'enabled') {
+                                        mentors[index].enabled = target.checked;
+                                        serialize();
+                                    }
+                                });
+
+                                builder.addEventListener('click', function (event) {
+                                    var target = event.target;
+                                    if (target.getAttribute('data-action') !== 'remove') {
+                                        return;
+                                    }
+                                    var index = parseInt(target.getAttribute('data-index'), 10);
+                                    if (!Number.isNaN(index)) {
+                                        mentors.splice(index, 1);
+                                        render();
+                                        serialize();
+                                    }
+                                });
+
+                                addBtn.addEventListener('click', function () {
+                                    mentors.push({
+                                        enabled: true,
+                                        name: '',
+                                        role: '',
+                                        experience: '',
+                                        specialization: '',
+                                        projects: '',
+                                        linkedin: '',
+                                        github: '',
+                                        message: ''
+                                    });
+                                    render();
+                                    serialize();
+                                });
+
+                                render();
+                                serialize();
+                            })();
+                        </script>
+                    </td>
+                </tr>
+                <tr><th scope="row">Mentor Title</th><td><input class="regular-text" type="text" name="jrc_options[mentor_title]" value="<?php echo esc_attr($options['mentor_title']); ?>"></td></tr>
+                <tr><th scope="row">Mentor Bio</th><td><textarea class="large-text" rows="3" name="jrc_options[mentor_bio]"><?php echo esc_textarea($options['mentor_bio']); ?></textarea></td></tr>
+
+                <tr><th scope="row">FAQ Title</th><td><input class="regular-text" type="text" name="jrc_options[faq_title]" value="<?php echo esc_attr($options['faq_title']); ?>"></td></tr>
+                <tr><th scope="row">FAQ Items</th><td><textarea class="large-text" rows="6" name="jrc_options[faq_items]"><?php echo esc_textarea($options['faq_items']); ?></textarea><p class="description">One per line. Format: Question | Answer</p></td></tr>
+
+                <tr><th scope="row">Final CTA Title</th><td><input class="regular-text" type="text" name="jrc_options[final_title]" value="<?php echo esc_attr($options['final_title']); ?>"></td></tr>
+                <tr><th scope="row">Final CTA Subtitle</th><td><textarea class="large-text" rows="2" name="jrc_options[final_subtitle]"><?php echo esc_textarea($options['final_subtitle']); ?></textarea></td></tr>
+            </table>
+            <?php submit_button(); ?>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Block pattern: Job Ready Course page content.
+ */
+add_action('init', function () {
+    if (!function_exists('register_block_pattern')) {
+        return;
+    }
+
+    if (function_exists('register_block_pattern_category')) {
+        register_block_pattern_category('khokan-pages', ['label' => 'Khokan Pages']);
+    }
+
+    $pattern = <<<'HTML'
+<!-- wp:group {"className":"section course-hero"} -->
+<div class="wp-block-group section course-hero"><!-- wp:group {"className":"container course-hero__grid"} -->
+<div class="wp-block-group container course-hero__grid"><!-- wp:group {"className":"course-hero__content"} -->
+<div class="wp-block-group course-hero__content"><!-- wp:heading {"level":1,"className":"course-hero__title"} -->
+<h1 class="course-hero__title">Job-Ready Course for Last Semester Students &amp; Fresh Graduates</h1>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph {"className":"course-hero__subtitle"} -->
+<p class="course-hero__subtitle">Flutter + React + practical AI use. Beginner-friendly, Bangladesh-focused, budget-friendly.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:buttons {"className":"course-hero__actions"} -->
+<div class="wp-block-buttons course-hero__actions"><!-- wp:button {"className":"primary-btn","linkClassName":"primary-btn"} -->
+<div class="wp-block-button primary-btn"><a class="wp-block-button__link primary-btn" href="[WEBSITE_ENROLL_LINK]">Enroll Now</a></div>
+<!-- /wp:button --></div>
+<!-- /wp:buttons --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-hero__card"} -->
+<div class="wp-block-group course-hero__card"><!-- wp:heading {"level":2,"className":"course-hero__card-title"} -->
+<h2 class="course-hero__card-title">Quick Info</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"course-hero__list"} -->
+<ul class="course-hero__list"><li>Start Date: [START_DATE]</li><li>Batch Size: [SEAT_LIMIT]</li><li>Fee From: ৳ 6,999 (Early Bird)</li><li>Mode: Online Live</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>Who This Course Is For</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>Last semester students (any dept, but interested in dev)</li><li>Fresh graduates (0–1 year)</li><li>Beginners who want a clear roadmap</li><li>যারা confident না, but start করতে চায় 🙂</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>What You Will Learn</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph {"className":"section-subtitle"} -->
+<p class="section-subtitle">Four tracks, structured and beginner-first.</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:group {"className":"course-grid"} -->
+<div class="wp-block-group course-grid"><!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>Flutter (Mobile)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>Dart basics to real app flow</li><li>UI building with widgets</li><li>State management (simple and practical)</li><li>API connect, auth, and local storage</li><li>Build 2–3 small apps + 1 portfolio app</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>React (Web)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>React basics + component thinking</li><li>Hooks, state, and routing</li><li>API integration, forms, validations</li><li>Build a responsive web project</li><li>Simple deployment for portfolio</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>AI (Practical &amp; Ethical)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>ChatGPT/Codex/Cursor/Gemini/Kiro workflow</li><li>Prompting for explanations, not copy-paste</li><li>Debugging help and refactor suggestions</li><li>Learn to ask better questions</li><li>AI as learning partner, not cheating</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>Job Prep</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>GitHub profile setup</li><li>CV + portfolio guidance</li><li>Interview practice (basic)</li><li>LinkedIn tips and project showcase</li><li>How to talk about your projects</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>How We Use AI (Ethical + Practical)</h2>
+<!-- /wp:heading -->
+
+<!-- wp:group {"className":"course-grid course-grid--two"} -->
+<div class="wp-block-group course-grid course-grid--two"><!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>Ethical Rules</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>AI is a learning partner, not a copy-paste machine</li><li>Always understand before using</li><li>No fake projects, no copied code without learning</li><li>We compare AI output with docs and best practices</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-card"} -->
+<div class="wp-block-group course-card"><!-- wp:heading {"level":3} -->
+<h3>Good Use Examples</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>Ask AI to explain error messages</li><li>Ask for 2–3 solution options, then choose</li><li>Use AI to generate test data or dummy content</li><li>Ask for a code review checklist</li></ul>
+<!-- /wp:list -->
+
+<!-- wp:separator {"className":"course-divider"} -->
+<hr class="wp-block-separator has-alpha-channel-opacity course-divider"/>
+<!-- /wp:separator -->
+
+<!-- wp:heading {"level":3} -->
+<h3>Bad Use (We Don’t Do This)</h3>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"list"} -->
+<ul class="list"><li>Copy full project code without understanding</li><li>Submit AI-made code as your own without learning</li></ul>
+<!-- /wp:list --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-cta"} -->
+<div class="wp-block-group course-cta"><!-- wp:group -->
+<div class="wp-block-group"><!-- wp:heading {"level":3} -->
+<h3>Want the AI workflow guide?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph {"className":"section-subtitle"} -->
+<p class="section-subtitle">Start with a free guideline call.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:buttons {"className":"course-cta__actions"} -->
+<div class="wp-block-buttons course-cta__actions"><!-- wp:button {"className":"primary-btn","linkClassName":"primary-btn"} -->
+<div class="wp-block-button primary-btn"><a class="wp-block-button__link primary-btn" href="[WEBSITE_ENROLL_LINK]">Enroll Now</a></div>
+<!-- /wp:button --></div>
+<!-- /wp:buttons --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>Course Details</h2>
+<!-- /wp:heading -->
+
+<!-- wp:group {"className":"course-table"} -->
+<div class="wp-block-group course-table"><!-- wp:paragraph -->
+<p>Duration: 10–12 weeks</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Class Days/Week: 2–3 days</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Mode: Online (Live + Practice)</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Language: Bangla + English mix</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Batch Size: [SEAT_LIMIT]</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Start Date: [START_DATE]</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Class Time: [CLASS_TIME_OPTIONS]</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>Fee (Student-Friendly)</h2>
+<!-- /wp:heading -->
+
+<!-- wp:group {"className":"course-price"} -->
+<div class="wp-block-group course-price"><!-- wp:paragraph -->
+<p>Standard Fee: ৳ 9,999</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Early Bird: ৳ 6,999 (limited seats)</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph {"className":"section-subtitle"} -->
+<p class="section-subtitle">Installment available: 2–3 steps, friendly plan</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>Mentor</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph {"className":"course-mentor"} -->
+<p class="course-mentor">আমি একজন full-stack developer ও mentor. I keep things simple and realistic. Goal: help you build confidence, projects, and a real learning habit. No fake promises, just consistent growth. 🙌</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section"} -->
+<div class="wp-block-group section course-section"><!-- wp:group {"className":"container"} -->
+<div class="wp-block-group container"><!-- wp:heading -->
+<h2>FAQ</h2>
+<!-- /wp:heading -->
+
+<!-- wp:group {"className":"course-faq"} -->
+<div class="wp-block-group course-faq"><!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>আমি একদম beginner. পারবো তো?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Yes. Step-by-step, zero assumed background.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Laptop minimum spec কী লাগবে?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Any decent laptop that can run VS Code + browser.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Flutter + React একসাথে শিখতে পারবো?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Yes, but we keep it structured and paced.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>AI tools use করলে কি cheating হবে?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>No, if used ethically. We focus on learning, not copying.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Class miss করলে কী হবে?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>We share notes and practice tasks. You can catch up.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Job guarantee আছে?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>No guarantee. But you’ll have real projects and guidance.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Installment possible?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Yes, 2–3 steps.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"course-faq__item"} -->
+<div class="wp-block-group course-faq__item"><!-- wp:heading {"level":3} -->
+<h3>Certificate পাবো?</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>Yes, upon completion of projects and attendance.</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+
+<!-- wp:group {"className":"section course-section course-final"} -->
+<div class="wp-block-group section course-section course-final"><!-- wp:group {"className":"container course-final__inner"} -->
+<div class="wp-block-group container course-final__inner"><!-- wp:group -->
+<div class="wp-block-group"><!-- wp:heading -->
+<h2>Ready to start your job-ready journey?</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph {"className":"section-subtitle"} -->
+<p class="section-subtitle">ছোট ছোট steps নিয়ে শুরু করি—skill তৈরি হবে। 🚀</p>
+<!-- /wp:paragraph --></div>
+<!-- /wp:group -->
+
+<!-- wp:buttons {"className":"course-cta__actions"} -->
+<div class="wp-block-buttons course-cta__actions"><!-- wp:button {"className":"primary-btn","linkClassName":"primary-btn"} -->
+<div class="wp-block-button primary-btn"><a class="wp-block-button__link primary-btn" href="[WEBSITE_ENROLL_LINK]">Enroll Now</a></div>
+<!-- /wp:button --></div>
+<!-- /wp:buttons --></div>
+<!-- /wp:group --></div>
+<!-- /wp:group -->
+HTML;
+
+    register_block_pattern(
+        'khokan/job-ready-course',
+        [
+            'title' => 'Job Ready Course Page',
+            'description' => 'Landing page layout for the Job-Ready Course.',
+            'categories' => ['khokan-pages'],
+            'content' => $pattern,
+        ]
+    );
+});
+
+/**
+ * Create a draft Learning Path page on theme activation (if missing).
+ */
+function khokan_maybe_create_learning_path_page()
+{
+    $template = 'page-learning-path.php';
+    $legacy_template = 'page-clean-architecture.php';
+    $title = 'Learning Path';
+    $slug = 'learning-path';
+
+    $existing_template = get_posts([
+        'post_type' => 'page',
+        'post_status' => ['publish', 'draft', 'pending', 'private'],
+        'meta_key' => '_wp_page_template',
+        'meta_value' => [$template, $legacy_template],
+        'meta_compare' => 'IN',
+        'fields' => 'ids',
+        'numberposts' => -1,
+    ]);
+
+    if ($existing_template) {
+        foreach ($existing_template as $page_id) {
+            if (get_post_meta($page_id, '_wp_page_template', true) === $legacy_template) {
+                update_post_meta($page_id, '_wp_page_template', $template);
+            }
+        }
+        return;
+    }
+
+    $page = get_page_by_path($slug);
+    if (!$page) {
+        $page = get_page_by_title($title);
+    }
+
+    if ($page instanceof WP_Post) {
+        update_post_meta($page->ID, '_wp_page_template', $template);
+        return;
+    }
+
+    $page_id = wp_insert_post([
+        'post_type' => 'page',
+        'post_title' => $title,
+        'post_name' => $slug,
+        'post_status' => 'draft',
+    ]);
+
+    if (!is_wp_error($page_id) && $page_id) {
+        update_post_meta($page_id, '_wp_page_template', $template);
+    }
+}
+add_action('after_switch_theme', 'khokan_maybe_create_learning_path_page');
+
+/**
+ * Learning Path template meta box (choose category).
+ */
+function khokan_is_learning_path_template($post_id)
+{
+    $template = get_page_template_slug($post_id);
+    if (!$template) {
+        $template = get_post_meta($post_id, '_wp_page_template', true);
+    }
+    return in_array($template, ['page-learning-path.php', 'page-clean-architecture.php'], true);
+}
+
+function khokan_add_learning_path_meta_box()
+{
+    add_meta_box(
+        'khokan_learning_path_meta',
+        'Learning Path Settings',
+        'khokan_learning_path_meta_box_html',
+        'page',
+        'side',
+        'default'
+    );
+}
+add_action('add_meta_boxes', 'khokan_add_learning_path_meta_box');
+
+function khokan_learning_path_meta_box_html($post)
+{
+    if (!$post instanceof WP_Post) {
+        return;
+    }
+
+    $is_learning_path = khokan_is_learning_path_template($post->ID);
+    wp_nonce_field('khokan_learning_path_meta_nonce', 'khokan_learning_path_meta_nonce');
+    $selected_slug = (string) get_post_meta($post->ID, 'learning_path_category', true);
+    $categories = get_categories([
+        'hide_empty' => false,
+        'orderby' => 'name',
+        'order' => 'ASC',
+    ]);
+    ?>
+    <p>
+        <label for="learning-path-category"><strong>Series Category</strong></label>
+        <select id="learning-path-category" name="learning_path_category" style="width:100%;">
+            <option value="">Use page slug</option>
+            <?php foreach ($categories as $category) : ?>
+                <option value="<?php echo esc_attr($category->slug); ?>" <?php selected($selected_slug, $category->slug); ?>>
+                    <?php echo esc_html($category->name); ?> (<?php echo (int) $category->count; ?>)
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </p>
+    <p class="description">
+        Select a category to power this learning path. Leave blank to use the page slug.
+        <?php if (!$is_learning_path) : ?>
+            <br>Note: This setting is used when the Learning Path template is selected.
+        <?php endif; ?>
+    </p>
+    <?php
+}
+
+function khokan_save_learning_path_meta_box($post_id)
+{
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+
+    if (!isset($_POST['khokan_learning_path_meta_nonce'])) {
+        return;
+    }
+
+    if (!wp_verify_nonce($_POST['khokan_learning_path_meta_nonce'], 'khokan_learning_path_meta_nonce')) {
+        return;
+    }
+
+    if (!current_user_can('edit_page', $post_id)) {
+        return;
+    }
+
+    if (isset($_POST['learning_path_category'])) {
+        $slug = sanitize_title(wp_unslash($_POST['learning_path_category']));
+        if ($slug === '') {
+            delete_post_meta($post_id, 'learning_path_category');
+        } else {
+            update_post_meta($post_id, 'learning_path_category', $slug);
+        }
+    }
+}
+add_action('save_post_page', 'khokan_save_learning_path_meta_box');
+
+/**
+ * Register Learning Path meta for REST/block editor compatibility.
+ */
+function khokan_register_learning_path_meta()
+{
+    register_post_meta('page', 'learning_path_category', [
+        'show_in_rest' => true,
+        'single' => true,
+        'type' => 'string',
+        'sanitize_callback' => 'sanitize_text_field',
+        'auth_callback' => function () {
+            return current_user_can('edit_pages');
+        },
+    ]);
+}
+add_action('init', 'khokan_register_learning_path_meta');
 
 /**
  * Register a Project custom post type so projects can be added from WP admin.
@@ -492,6 +2893,66 @@ function khokan_sanitize_services_list($value)
     return implode("\n", $clean);
 }
 
+function khokan_sanitize_hobbies_list($value)
+{
+    $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $value)));
+    $clean = [];
+
+    foreach ($lines as $line) {
+        if ($line === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $line));
+        if (empty($parts[0])) {
+            continue;
+        }
+
+        $title = sanitize_text_field($parts[0]);
+        $desc = isset($parts[1]) ? sanitize_text_field($parts[1]) : '';
+        $tags = [];
+        if (!empty($parts[2])) {
+            $tags = array_filter(array_map('trim', preg_split('/[,;]+/', $parts[2])));
+            $tags = array_slice($tags, 0, 8);
+            $tags = array_map('sanitize_text_field', $tags);
+        }
+
+        $clean[] = implode('|', [
+            $title,
+            $desc,
+            $tags ? implode(',', $tags) : '',
+        ]);
+    }
+
+    return implode("\n", $clean);
+}
+
+function khokan_sanitize_hobby_projects_list($value)
+{
+    $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $value)));
+    $clean = [];
+
+    foreach ($lines as $line) {
+        if ($line === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $line));
+        if (empty($parts[0])) {
+            continue;
+        }
+
+        $title = sanitize_text_field($parts[0]);
+        $desc = isset($parts[1]) ? sanitize_text_field($parts[1]) : '';
+        $link = '';
+        if (!empty($parts[2]) && preg_match('#^https?://#i', $parts[2])) {
+            $link = esc_url_raw($parts[2]);
+        }
+
+        $clean[] = implode('|', [$title, $desc, $link]);
+    }
+
+    return implode("\n", $clean);
+}
+
 function khokan_sanitize_float($value)
 {
     $num = floatval($value);
@@ -623,6 +3084,13 @@ function khokan_customize_register($wp_customize)
         'title' => 'Projects',
         'priority' => 30,
         'description' => 'Manage projects grid, pagination, and visibility.',
+        'panel' => 'khokan_theme_panel',
+    ]);
+
+    $wp_customize->add_section('khokan_hobbies', [
+        'title' => 'Web Hobbies & Side Projects',
+        'priority' => 32,
+        'description' => 'Control the My Hobbies & Web Craft section and featured web links.',
         'panel' => 'khokan_theme_panel',
     ]);
 
@@ -877,6 +3345,97 @@ function khokan_customize_register($wp_customize)
         'type' => 'textarea',
         'description' => "Format: Label | style(accent|default). Use 'accent' for highlighted cards.",
         'priority' => 15,
+    ]);
+
+    $default_hobbies_lines = implode("\n", [
+        'React Development|I like shaping clean, scalable web apps - dashboards, admin panels, and internal tools where speed and clarity matter.|React,APIs,Performance-first UI',
+        'WordPress Custom Craft|Custom themes and performance tuning for portfolio sites and content-driven platforms built to be clean, SEO-ready, and actually used.|Custom themes,Performance,SEO-ready',
+        'Web + Mobile Ecosystem|Web experience feeds my mobile architecture thinking: admin dashboards, landing pages, and backend integration that line up with app flows.|System thinking,Admin dashboards,Backend integration',
+    ]);
+
+    $default_hobby_projects_lines = implode("\n", [
+        'khokan.me|Personal portfolio & blog (Custom WordPress).|https://www.khokan.me',
+        'SolutionHub (Beta)|Web tools platform.|https://solutionhub.khokan.me/',
+        'Aleef Mart|Ecommerce contributions and performance tuning.|https://aleefmart.com/',
+    ]);
+
+    $wp_customize->add_setting('khokan_hobbies_enabled', [
+        'default' => 1,
+        'sanitize_callback' => 'khokan_sanitize_checkbox',
+    ]);
+    $wp_customize->add_control('khokan_hobbies_enabled', [
+        'label' => 'Show Hobbies/Web Craft Section',
+        'section' => 'khokan_hobbies',
+        'type' => 'checkbox',
+        'priority' => 1,
+    ]);
+
+    $wp_customize->add_setting('khokan_hobbies_title', [
+        'default' => 'My Hobbies & Web Craft',
+        'sanitize_callback' => 'sanitize_text_field',
+    ]);
+    $wp_customize->add_control('khokan_hobbies_title', [
+        'label' => 'Section Title',
+        'section' => 'khokan_hobbies',
+        'type' => 'text',
+        'priority' => 5,
+    ]);
+
+    $wp_customize->add_setting('khokan_hobbies_subtitle', [
+        'default' => 'I lead with mobile (Flutter & React Native), but I genuinely enjoy building for the web. What started as weekend tinkering grew into production dashboards and sites, and it now helps me design stronger mobile systems, APIs, dashboards, and admin panels.',
+        'sanitize_callback' => 'khokan_sanitize_textarea',
+    ]);
+    $wp_customize->add_control('khokan_hobbies_subtitle', [
+        'label' => 'Section Subtext',
+        'section' => 'khokan_hobbies',
+        'type' => 'textarea',
+        'priority' => 10,
+    ]);
+
+    $wp_customize->add_setting('khokan_hobbies_items', [
+        'default' => $default_hobbies_lines,
+        'sanitize_callback' => 'khokan_sanitize_hobbies_list',
+    ]);
+    $wp_customize->add_control('khokan_hobbies_items', [
+        'label' => 'Hobby Cards (one per line)',
+        'section' => 'khokan_hobbies',
+        'type' => 'textarea',
+        'priority' => 12,
+        'description' => "Format: Title | Description | Tags (comma separated).",
+    ]);
+
+    $wp_customize->add_setting('khokan_hobby_projects_title', [
+        'default' => 'Web Projects Built from Passion',
+        'sanitize_callback' => 'sanitize_text_field',
+    ]);
+    $wp_customize->add_control('khokan_hobby_projects_title', [
+        'label' => 'Web Projects Heading',
+        'section' => 'khokan_hobbies',
+        'type' => 'text',
+        'priority' => 14,
+    ]);
+
+    $wp_customize->add_setting('khokan_hobby_projects', [
+        'default' => $default_hobby_projects_lines,
+        'sanitize_callback' => 'khokan_sanitize_hobby_projects_list',
+    ]);
+    $wp_customize->add_control('khokan_hobby_projects', [
+        'label' => 'Web Projects (one per line)',
+        'section' => 'khokan_hobbies',
+        'type' => 'textarea',
+        'priority' => 16,
+        'description' => "Format: Name | Description | Link (optional).",
+    ]);
+
+    $wp_customize->add_setting('khokan_hobbies_outro', [
+        'default' => 'Sometimes hobbies turn into strengths - web development is one of mine.',
+        'sanitize_callback' => 'khokan_sanitize_textarea',
+    ]);
+    $wp_customize->add_control('khokan_hobbies_outro', [
+        'label' => 'Outro Line',
+        'section' => 'khokan_hobbies',
+        'type' => 'text',
+        'priority' => 18,
     ]);
 
     $default_services_lines = implode("\n", [
@@ -1665,9 +4224,9 @@ function khokan_customize_register($wp_customize)
     ]);
 
     $wp_customize->add_setting('khokan_hero_bg_type', [
-        'default' => 'gradient',
+        'default' => 'default',
         'sanitize_callback' => function ($value) {
-            return in_array($value, ['default', 'solid', 'gradient', 'image'], true) ? $value : 'gradient';
+            return in_array($value, ['default', 'solid', 'gradient', 'image'], true) ? $value : 'default';
         },
     ]);
     $wp_customize->add_control('khokan_hero_bg_type', [
@@ -1877,6 +4436,110 @@ function khokan_get_expertise_items()
     }
 
     return $items;
+}
+
+function khokan_get_hobbies_items()
+{
+    $default_lines = [
+        'React Development|I like shaping clean, scalable web apps - dashboards, admin panels, and internal tools where speed and clarity matter.|React,APIs,Performance-first UI',
+        'WordPress Custom Craft|Custom themes and performance tuning for portfolio sites and content-driven platforms built to be clean, SEO-ready, and actually used.|Custom themes,Performance,SEO-ready',
+        'Web + Mobile Ecosystem|Web experience feeds my mobile architecture thinking: admin dashboards, landing pages, and backend integration that line up with app flows.|System thinking,Admin dashboards,Backend integration',
+    ];
+
+    $raw = get_theme_mod('khokan_hobbies_items', implode("\n", $default_lines));
+    $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $raw)));
+
+    $items = [];
+    foreach ($lines as $line) {
+        if ($line === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $line));
+        if (empty($parts[0])) {
+            continue;
+        }
+        $tags = [];
+        if (!empty($parts[2])) {
+            $tags = array_filter(array_map('trim', preg_split('/[,;]+/', $parts[2])));
+            $tags = array_slice($tags, 0, 8);
+            $tags = array_map('sanitize_text_field', $tags);
+        }
+        $items[] = [
+            'label' => sanitize_text_field($parts[0]),
+            'description' => isset($parts[1]) ? sanitize_text_field($parts[1]) : '',
+            'tags' => $tags,
+        ];
+    }
+
+    if (!$items) {
+        foreach ($default_lines as $line) {
+            $parts = array_map('trim', explode('|', $line));
+            if (empty($parts[0])) {
+                continue;
+            }
+            $tags = [];
+            if (!empty($parts[2])) {
+                $tags = array_filter(array_map('trim', preg_split('/[,;]+/', $parts[2])));
+            }
+            $items[] = [
+                'label' => $parts[0],
+                'description' => $parts[1] ?? '',
+                'tags' => $tags,
+            ];
+        }
+    }
+
+    return $items;
+}
+
+function khokan_get_hobby_projects()
+{
+    $default_lines = [
+        'khokan.me|Personal portfolio & blog (Custom WordPress).|https://www.khokan.me',
+        'SolutionHub (Beta)|Web tools platform.|https://solutionhub.khokan.me/',
+        'Aleef Mart|Ecommerce contributions and performance tuning.|https://aleefmart.com/',
+    ];
+
+    $raw = get_theme_mod('khokan_hobby_projects', implode("\n", $default_lines));
+    $lines = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $raw)));
+
+    $projects = [];
+    foreach ($lines as $line) {
+        if ($line === '') {
+            continue;
+        }
+        $parts = array_map('trim', explode('|', $line));
+        if (empty($parts[0])) {
+            continue;
+        }
+
+        $link = '';
+        if (!empty($parts[2]) && preg_match('#^https?://#i', $parts[2])) {
+            $link = esc_url($parts[2]);
+        }
+
+        $projects[] = [
+            'name' => sanitize_text_field($parts[0]),
+            'description' => isset($parts[1]) ? sanitize_text_field($parts[1]) : '',
+            'link' => $link,
+        ];
+    }
+
+    if (!$projects) {
+        foreach ($default_lines as $line) {
+            $parts = array_map('trim', explode('|', $line));
+            if (empty($parts[0])) {
+                continue;
+            }
+            $projects[] = [
+                'name' => $parts[0],
+                'description' => $parts[1] ?? '',
+                'link' => $parts[2] ?? '',
+            ];
+        }
+    }
+
+    return $projects;
 }
 
 function khokan_get_projects()
@@ -2253,6 +4916,22 @@ function khokan_handle_contact_form()
     $email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
     $message = isset($_POST['message']) ? sanitize_textarea_field(wp_unslash($_POST['message'])) : '';
 
+    if (!$name) {
+        $GLOBALS['khokan_contact_feedback'] = [
+            'status' => 'error',
+            'message' => 'Please add your name before sending.',
+        ];
+        return;
+    }
+
+    if (!$email || !is_email($email)) {
+        $GLOBALS['khokan_contact_feedback'] = [
+            'status' => 'error',
+            'message' => 'Please enter a valid email address.',
+        ];
+        return;
+    }
+
     if (!$message) {
         $GLOBALS['khokan_contact_feedback'] = [
             'status' => 'error',
@@ -2261,16 +4940,38 @@ function khokan_handle_contact_form()
         return;
     }
 
-    $recipient = get_theme_mod('khokan_contact_email', get_option('admin_email'));
-    if (!$recipient) {
-        $recipient = get_option('admin_email');
+    $admin_email = sanitize_email(get_option('admin_email'));
+    $custom_email = sanitize_email(get_theme_mod('khokan_contact_email', ''));
+    $site_host = wp_parse_url(home_url(), PHP_URL_HOST);
+    $fallback_email = $site_host ? 'noreply@' . $site_host : 'wordpress@localhost';
+
+    if (!$admin_email) {
+        $admin_email = $fallback_email;
+    }
+
+    // Always send to admin; include custom email if provided.
+    $recipients = array_filter(array_unique(array_merge(
+        $admin_email ? [$admin_email] : [],
+        $custom_email ? [$custom_email] : []
+    )));
+
+    if (!$recipients) {
+        $GLOBALS['khokan_contact_feedback'] = [
+            'status' => 'error',
+            'message' => 'No valid recipient email is configured.',
+        ];
+        return;
     }
 
     $subject = sprintf('[Khokan Portfolio] Message from %s', $name ?: 'Website visitor');
     $headers = [];
+    if ($admin_email) {
+        $headers[] = 'From: ' . get_bloginfo('name') . ' <' . $admin_email . '>';
+    }
     if ($email) {
         $headers[] = 'Reply-To: ' . $email;
     }
+    $headers[] = 'Content-Type: text/plain; charset=UTF-8';
 
     $body_lines = [
         'Name: ' . ($name ?: 'N/A'),
@@ -2339,13 +5040,50 @@ function khokan_output_meta_tags()
 
     $url = home_url('/');
     $locale = str_replace('_', '-', get_locale());
+	
+	    $post_id = get_queried_object_id();
+    if (is_singular() && $post_id) {
+        $url = get_permalink($post_id) ?: $url;
+
+        $singular_title = get_the_title($post_id);
+        if (!empty($singular_title)) {
+            $title = $singular_title;
+        }
+
+        $singular_desc = get_the_excerpt($post_id);
+        if (!$singular_desc) {
+            $content = get_post_field('post_content', $post_id);
+            if (!empty($content)) {
+                $singular_desc = wp_trim_words(wp_strip_all_tags($content), 30, '…');
+            }
+        }
+        if (!empty($singular_desc)) {
+            $description = $singular_desc;
+        }
+
+        $thumb_id = get_post_thumbnail_id($post_id);
+        if ($thumb_id) {
+            $image = wp_get_attachment_image_url($thumb_id, 'large') ?: $image;
+            $image_meta = wp_get_attachment_metadata($thumb_id);
+            if (!empty($image_meta['width'])) {
+                $image_width = (int) $image_meta['width'];
+            }
+            if (!empty($image_meta['height'])) {
+                $image_height = (int) $image_meta['height'];
+            }
+            $mime = get_post_mime_type($thumb_id);
+            if (!empty($mime)) {
+                $image_type = $mime;
+            }
+        }
+    }
 
     if ($description) {
         echo '<meta name="description" content="' . esc_attr($description) . '">' . "\n";
     }
     echo '<link rel="canonical" href="' . esc_url($url) . '">' . "\n";
     echo '<meta property="og:locale" content="' . esc_attr($locale) . '">' . "\n";
-    echo '<meta property="og:type" content="website">' . "\n";
+    echo '<meta property="og:type" content="' . esc_attr(is_singular() ? 'article' : 'website') . '">' . "\n";
     echo '<meta property="og:url" content="' . esc_url($url) . '">' . "\n";
     echo '<meta property="og:title" content="' . esc_attr($title) . '">' . "\n";
     if ($description) {

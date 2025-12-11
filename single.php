@@ -11,14 +11,62 @@ if (have_posts()) :
         $thumb = get_the_post_thumbnail_url(get_the_ID(), 'large');
         $categories = get_the_category();
         $tags = get_the_tags();
-        $share_url = urlencode(get_permalink());
-        $share_title = urlencode(get_the_title());
+        $share_url = rawurlencode(get_permalink());
+        $share_title = rawurlencode(html_entity_decode(get_the_title(), ENT_QUOTES, 'UTF-8'));
+        $share_media = $thumb ? rawurlencode($thumb) : '';
         $popular = new WP_Query([
             'post_type' => 'post',
             'posts_per_page' => 5,
             'post__not_in' => [get_the_ID()],
             'ignore_sticky_posts' => 1,
         ]);
+
+        $share_links = [
+            [
+                'label' => 'Facebook',
+                'href' => "https://www.facebook.com/sharer/sharer.php?u={$share_url}",
+            ],
+            [
+                'label' => 'X / Twitter',
+                'href' => "https://twitter.com/intent/tweet?url={$share_url}&text={$share_title}",
+            ],
+            [
+                'label' => 'LinkedIn',
+                'href' => "https://www.linkedin.com/sharing/share-offsite/?url={$share_url}",
+            ],
+            [
+                'label' => 'WhatsApp',
+                'href' => "https://api.whatsapp.com/send?text={$share_title}%20{$share_url}",
+            ],
+            [
+                'label' => 'Telegram',
+                'href' => "https://t.me/share/url?url={$share_url}&text={$share_title}",
+            ],
+            [
+                'label' => 'Reddit',
+                'href' => "https://www.reddit.com/submit?url={$share_url}&title={$share_title}",
+            ],
+            [
+                'label' => 'Pinterest',
+                'href' => "https://pinterest.com/pin/create/button/?url={$share_url}&media={$share_media}&description={$share_title}",
+            ],
+        ];
+        $share_links = array_filter($share_links, function ($item) {
+            return !empty($item['href']);
+        });
+
+        $social_profiles = [
+            ['label' => 'Facebook', 'href' => get_theme_mod('khokan_social_facebook', '')],
+            ['label' => 'Twitter / X', 'href' => get_theme_mod('khokan_social_twitter', '')],
+            ['label' => 'LinkedIn', 'href' => get_theme_mod('khokan_social_linkedin', '')],
+            ['label' => 'Instagram', 'href' => get_theme_mod('khokan_social_instagram', '')],
+            ['label' => 'YouTube', 'href' => get_theme_mod('khokan_social_youtube', '')],
+            ['label' => 'Telegram', 'href' => get_theme_mod('khokan_social_telegram', '')],
+            ['label' => 'WhatsApp', 'href' => get_theme_mod('khokan_social_whatsapp', '')],
+        ];
+        $social_profiles = array_values(array_filter($social_profiles, function ($item) {
+            return !empty($item['href']) && $item['href'] !== '#';
+        }));
         ?>
         <main class="section post-layout">
             <div class="container">
@@ -54,9 +102,11 @@ if (have_posts()) :
                         <div class="post-share">
                             <span>Share:</span>
                             <div class="share-buttons">
-                                <a href="https://www.facebook.com/sharer/sharer.php?u=<?php echo $share_url; ?>" target="_blank" rel="noopener">Facebook</a>
-                                <a href="https://twitter.com/intent/tweet?url=<?php echo $share_url; ?>&text=<?php echo $share_title; ?>" target="_blank" rel="noopener">X / Twitter</a>
-                                <a href="https://www.linkedin.com/sharing/share-offsite/?url=<?php echo $share_url; ?>" target="_blank" rel="noopener">LinkedIn</a>
+                                <?php foreach ($share_links as $share) : ?>
+                                    <a href="<?php echo esc_url($share['href']); ?>" target="_blank" rel="noopener noreferrer">
+                                        <?php echo esc_html($share['label']); ?>
+                                    </a>
+                                <?php endforeach; ?>
                             </div>
                         </div>
 
@@ -69,9 +119,15 @@ if (have_posts()) :
                         <?php endif; ?>
 
                         <div class="post-nav">
-                            <div class="post-nav__prev"><?php previous_post_link('%link', '← %title'); ?></div>
+                            <div class="post-nav__prev"><?php previous_post_link('%link', '← %title'); ?>
+							</div>
                             <div class="post-nav__next"><?php next_post_link('%link', '%title →'); ?></div>
                         </div>
+						<?php if (comments_open() || get_comments_number()) : ?>
+                            <div class="post-comments">
+                                <?php comments_template(); ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <aside class="post-sidebar">
@@ -83,10 +139,12 @@ if (have_posts()) :
                         <div class="widget widget-social">
                             <h3 class="widget-title">Follow</h3>
                             <div class="widget-social__links">
-                                <a href="https://facebook.com" target="_blank" rel="noopener">Facebook</a>
-                                <a href="https://twitter.com" target="_blank" rel="noopener">Twitter</a>
-                                <a href="https://www.linkedin.com" target="_blank" rel="noopener">LinkedIn</a>
-                                <a href="<?php echo esc_url(home_url('/feed/')); ?>" target="_blank" rel="noopener">RSS</a>
+                                <?php foreach ($social_profiles as $profile) : ?>
+                                    <a href="<?php echo esc_url($profile['href']); ?>" target="_blank" rel="noopener noreferrer">
+                                        <?php echo esc_html($profile['label']); ?>
+                                    </a>
+                                <?php endforeach; ?>
+                                <a href="<?php echo esc_url(home_url('/feed/')); ?>" target="_blank" rel="noopener noreferrer">RSS</a>
                             </div>
                         </div>
 

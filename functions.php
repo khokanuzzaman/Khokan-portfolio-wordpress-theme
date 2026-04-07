@@ -934,6 +934,15 @@ function jrc_get_application_statuses()
     ];
 }
 
+function jrc_get_application_payment_plan_labels()
+{
+    return [
+        'full' => 'Full ৳9,000',
+        'installment' => '3 Installments',
+        'monthly' => 'Monthly ৳1,500/mo',
+    ];
+}
+
 function jrc_get_application_course_options()
 {
     if (function_exists('jrc_get_course_data')) {
@@ -1023,6 +1032,7 @@ add_filter('manage_jrc_application_posts_columns', function ($columns) {
         'student_name' => 'Full Name',
         'student_email' => 'Email',
         'student_course' => 'Course',
+        'student_payment_plan' => 'Payment Plan',
         'student_skill' => 'Skill Level',
         'application_status' => 'Status',
         'date' => $columns['date'],
@@ -1044,6 +1054,12 @@ add_action('manage_jrc_application_posts_custom_column', function ($column, $pos
         echo esc_html($labels[$course] ?? '-');
         return;
     }
+    if ($column === 'student_payment_plan') {
+        $payment_plan = get_post_meta($post_id, 'student_payment_plan', true);
+        $labels = jrc_get_application_payment_plan_labels();
+        echo esc_html($labels[$payment_plan] ?? 'Not specified');
+        return;
+    }
     if ($column === 'student_skill') {
         echo esc_html(get_post_meta($post_id, 'student_experience', true));
         return;
@@ -1057,6 +1073,7 @@ add_action('manage_jrc_application_posts_custom_column', function ($column, $pos
 }, 10, 2);
 
 add_filter('manage_edit-jrc_application_sortable_columns', function ($columns) {
+    $columns['student_payment_plan'] = 'student_payment_plan';
     $columns['student_skill'] = 'student_skill';
     $columns['application_status'] = 'application_status';
     return $columns;
@@ -1093,11 +1110,38 @@ add_action('pre_get_posts', function (WP_Query $query) {
             'value' => $course,
         ];
     }
+    $payment_plan = sanitize_text_field($_GET['jrc_payment_plan'] ?? '');
+    if ($payment_plan !== '') {
+        $meta_query[] = [
+            'key' => 'student_payment_plan',
+            'value' => $payment_plan,
+        ];
+    }
     if (!empty($meta_query)) {
         $query->set('meta_query', $meta_query);
     }
 
     $orderby = $query->get('orderby');
+    if ($orderby === 'student_payment_plan') {
+        $meta_query = $query->get('meta_query');
+        if (!is_array($meta_query)) {
+            $meta_query = [];
+        }
+        $meta_query[] = [
+            'relation' => 'OR',
+            [
+                'key' => 'student_payment_plan',
+                'compare' => 'EXISTS',
+            ],
+            [
+                'key' => 'student_payment_plan',
+                'compare' => 'NOT EXISTS',
+            ],
+        ];
+        $query->set('meta_query', $meta_query);
+        $query->set('meta_key', 'student_payment_plan');
+        $query->set('orderby', 'meta_value');
+    }
     if ($orderby === 'student_skill') {
         $query->set('meta_key', 'student_experience');
         $query->set('orderby', 'meta_value');
@@ -1116,9 +1160,11 @@ add_action('restrict_manage_posts', function () {
     $statuses = jrc_get_application_statuses();
     $skills = ['Beginner', 'Intermediate', 'Advanced'];
     $courses = jrc_get_application_course_options();
+    $payment_plans = jrc_get_application_payment_plan_labels();
     $current_status = sanitize_text_field($_GET['jrc_status'] ?? '');
     $current_skill = sanitize_text_field($_GET['jrc_skill'] ?? '');
     $current_course = sanitize_text_field($_GET['jrc_course'] ?? '');
+    $current_payment_plan = sanitize_text_field($_GET['jrc_payment_plan'] ?? '');
 
     echo '<select name="jrc_status">';
     echo '<option value="">All Statuses</option>';
@@ -1138,6 +1184,13 @@ add_action('restrict_manage_posts', function () {
     echo '<option value="">All Courses</option>';
     foreach ($courses as $key => $label) {
         printf('<option value="%s"%s>%s</option>', esc_attr($key), selected($current_course, $key, false), esc_html($label));
+    }
+    echo '</select>';
+
+    echo '<select name="jrc_payment_plan">';
+    echo '<option value="">All Payment Plans</option>';
+    foreach ($payment_plans as $key => $label) {
+        printf('<option value="%s"%s>%s</option>', esc_attr($key), selected($current_payment_plan, $key, false), esc_html($label));
     }
     echo '</select>';
 });
@@ -1259,6 +1312,10 @@ function jrc_handle_application_export()
     if ($course !== '') {
         $meta_query[] = ['key' => 'student_course', 'value' => $course];
     }
+    $payment_plan = sanitize_text_field($_GET['jrc_payment_plan'] ?? '');
+    if ($payment_plan !== '') {
+        $meta_query[] = ['key' => 'student_payment_plan', 'value' => $payment_plan];
+    }
     if (!empty($meta_query)) {
         $args['meta_query'] = $meta_query;
     }
@@ -1329,6 +1386,7 @@ add_action('manage_posts_extra_tablenav', function ($which) {
             'jrc_status' => sanitize_text_field($_GET['jrc_status'] ?? ''),
             'jrc_skill' => sanitize_text_field($_GET['jrc_skill'] ?? ''),
             'jrc_course' => sanitize_text_field($_GET['jrc_course'] ?? ''),
+            'jrc_payment_plan' => sanitize_text_field($_GET['jrc_payment_plan'] ?? ''),
         ], admin_url('admin-post.php')),
         'jrc_export_applications'
     );

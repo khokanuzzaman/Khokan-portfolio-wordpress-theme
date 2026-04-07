@@ -119,9 +119,15 @@ if (have_posts()) :
                         <?php endif; ?>
 
                         <div class="post-nav">
-                            <div class="post-nav__prev"><?php previous_post_link('%link', '← %title'); ?></div>
+                            <div class="post-nav__prev"><?php previous_post_link('%link', '← %title'); ?>
+							</div>
                             <div class="post-nav__next"><?php next_post_link('%link', '%title →'); ?></div>
                         </div>
+						<?php if (comments_open() || get_comments_number()) : ?>
+                            <div class="post-comments">
+                                <?php comments_template(); ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <aside class="post-sidebar">

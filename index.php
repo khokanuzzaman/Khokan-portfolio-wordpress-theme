@@ -29,6 +29,8 @@ $project_filters = $projects_data['filters'] ?? [];
 $active_project_tag = $projects_data['active_tag'] ?? '';
 $tech_list = khokan_get_tech_list();
 $contact_feedback = khokan_get_contact_feedback();
+$hobby_cards = khokan_get_hobbies_items();
+$hobby_projects = khokan_get_hobby_projects();
 
 $brand_title = get_theme_mod('khokan_brand_title', 'Khokan Dev Studio');
 $hero_tagline = get_theme_mod('khokan_hero_tagline', 'Senior Mobile App Developer | Flutter & React Native Expert');
@@ -47,7 +49,7 @@ $skills_center_img = $skills_center_image_id ? wp_get_attachment_image_url($skil
 $skills_center_size = (int) get_theme_mod('khokan_skills_center_size', 78);
 $skills_center_size = max(30, min(120, $skills_center_size));
 $hero_alignment = get_theme_mod('khokan_hero_alignment', 'left');
-$hero_bg_type = get_theme_mod('khokan_hero_bg_type', 'gradient');
+$hero_bg_type = get_theme_mod('khokan_hero_bg_type', 'default');
 $hero_bg_color = sanitize_hex_color(get_theme_mod('khokan_hero_bg_color', '#050d2c')) ?: '#050d2c';
 $hero_bg_color2 = sanitize_hex_color(get_theme_mod('khokan_hero_bg_color2', '#0b1240')) ?: '#0b1240';
 $hero_bg_image_id = get_theme_mod('khokan_hero_bg_image');
@@ -79,6 +81,11 @@ $expertise_enabled = get_theme_mod('khokan_expertise_enabled', 1);
 $projects_title = get_theme_mod('khokan_projects_title', 'Projects');
 $projects_intro = get_theme_mod('khokan_projects_intro', '');
 $projects_enabled = get_theme_mod('khokan_projects_enabled', 1);
+$hobbies_enabled = get_theme_mod('khokan_hobbies_enabled', 1);
+$hobbies_title = get_theme_mod('khokan_hobbies_title', 'My Hobbies & Web Craft');
+$hobbies_subtitle = get_theme_mod('khokan_hobbies_subtitle', 'I lead with mobile (Flutter & React Native), but I genuinely enjoy building for the web. What started as weekend tinkering grew into production dashboards and sites, and it now helps me design stronger mobile systems, APIs, dashboards, and admin panels.');
+$hobbies_outro = get_theme_mod('khokan_hobbies_outro', 'Sometimes hobbies turn into strengths - web development is one of mine.');
+$hobby_projects_title = get_theme_mod('khokan_hobby_projects_title', 'Web Projects Built from Passion');
 
 $social_icons = [
     [
@@ -413,26 +420,85 @@ if ($hero_bg_type === 'solid') {
             </section>
         <?php endif; ?>
 
+        <?php if ($hobbies_enabled && (!empty($hobby_cards) || !empty($hobby_projects))) : ?>
+            <section id="web-hobbies" class="section web-hobbies">
+                <div class="container">
+                    <div class="hobbies-panel">
+                        <div class="section-heading">
+                            <h2><?php echo esc_html($hobbies_title); ?></h2>
+                            <?php if (!empty($hobbies_subtitle)) : ?>
+                                <p class="section-subtitle"><?php echo esc_html($hobbies_subtitle); ?></p>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if (!empty($hobby_cards)) : ?>
+                            <div class="hobby-grid">
+                                <?php foreach ($hobby_cards as $card) : ?>
+                                    <div class="hobby-card">
+                                        <div class="hobby-card__top">
+                                            <?php if (!empty($card['label'])) : ?>
+                                                <span class="hobby-label"><?php echo esc_html($card['label']); ?></span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <?php if (!empty($card['description'])) : ?>
+                                            <p class="hobby-card__body">
+                                                <?php echo esc_html($card['description']); ?>
+                                            </p>
+                                        <?php endif; ?>
+                                        <?php if (!empty($card['tags'])) : ?>
+                                            <div class="hobby-tags">
+                                                <?php foreach ($card['tags'] as $tag) : ?>
+                                                    <span class="hobby-tag"><?php echo esc_html($tag); ?></span>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($hobby_projects)) : ?>
+                            <div class="hobby-projects">
+                                <?php if (!empty($hobby_projects_title)) : ?>
+                                    <div class="hobby-projects__heading">
+                                        <h3><?php echo esc_html($hobby_projects_title); ?></h3>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="hobby-project-grid">
+                                    <?php foreach ($hobby_projects as $project) : ?>
+                                        <div class="hobby-project-card">
+                                            <?php if (!empty($project['link'])) : ?>
+                                                <a class="hobby-project-name" href="<?php echo esc_url($project['link']); ?>" target="_blank" rel="noopener">
+                                                    <?php echo esc_html($project['name']); ?>
+                                                </a>
+                                            <?php else : ?>
+                                                <div class="hobby-project-name"><?php echo esc_html($project['name']); ?></div>
+                                            <?php endif; ?>
+                                            <?php if (!empty($project['description'])) : ?>
+                                                <p class="hobby-project-desc"><?php echo esc_html($project['description']); ?></p>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($hobbies_outro)) : ?>
+                            <p class="hobby-outro"><?php echo esc_html($hobbies_outro); ?></p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </section>
+        <?php endif; ?>
+
         <?php if ($contact_enabled) : ?>
             <section id="contact" class="section contact">
                 <div class="container contact-grid">
                     <div>
                         <h2><?php echo esc_html($contact_title); ?></h2>
-                        <form class="contact-form" method="post">
-                            <?php if ($contact_feedback) : ?>
-                                <div class="form-feedback <?php echo esc_attr($contact_feedback['status']); ?>">
-                                    <?php echo esc_html($contact_feedback['message']); ?>
-                                </div>
-                            <?php endif; ?>
-                            <?php wp_nonce_field('khokan_contact_nonce', 'khokan_contact_nonce'); ?>
-                            <input type="hidden" name="khokan_contact_submit" value="1">
-                            <div class="input-row">
-                                <input type="text" placeholder="Name" name="name" value="<?php echo isset($_POST['name']) ? esc_attr(wp_unslash($_POST['name'])) : ''; ?>">
-                                <input type="email" placeholder="Email" name="email" value="<?php echo isset($_POST['email']) ? esc_attr(wp_unslash($_POST['email'])) : ''; ?>">
-                            </div>
-                            <textarea rows="3" placeholder="Project Details" name="message"><?php echo isset($_POST['message']) ? esc_textarea(wp_unslash($_POST['message'])) : ''; ?></textarea>
-                            <button type="submit" class="primary-btn"><?php echo esc_html($contact_button_text); ?></button>
-                        </form>
+                        <div class="contact-shortcode">
+                            <?php echo do_shortcode('[sureforms id="2687"]'); ?>
+                        </div>
                     </div>
 
                     <div class="social-block">

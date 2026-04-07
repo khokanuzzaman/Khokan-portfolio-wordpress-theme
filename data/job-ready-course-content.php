@@ -565,6 +565,18 @@ return [
         'discount_label' => 'Discounted Price',
         'cta' => 'Seat বুক করুন',
     ],
+    'guarantee' => [
+        'title' => '7-Day Money Back Guarantee',
+        'subtitle' => 'কোনো প্রশ্ন না — risk-free try করো',
+        'text' => 'প্রথম 7 দিনে যদি মনে করো এই course তোমার জন্য না, আমরা 100% টাকা ফেরত দেব। কোনো প্রশ্ন না, কোনো শর্ত না।',
+        'points' => [
+            'কোনো hidden terms নেই',
+            'No questions asked',
+            '100% refund within 7 days',
+            'Full course access during trial period',
+        ],
+        'cta_label' => 'Apply Risk-Free',
+    ],
     'batch_info' => [
         'title' => 'Next Batch Information',
         'subtitle' => 'Limited seats for focused mentoring.',

@@ -1248,6 +1248,56 @@ if (!function_exists('jrc_render_cta_block')) {
         </section>
     <?php endif; ?>
 
+    <?php if (!empty($course['guarantee'])) : ?>
+        <?php
+        $guarantee_cta = $primary_cta ?: $cta_basic;
+        if ($guarantee_cta && !empty($course['guarantee']['cta_label'])) {
+            $guarantee_cta['label'] = $course['guarantee']['cta_label'];
+            $guarantee_cta['class'] = 'primary-btn';
+        }
+        ?>
+        <section class="section course-section course-guarantee" id="guarantee">
+            <div class="container">
+                <div class="course-guarantee__card">
+                    <div class="course-guarantee__content">
+                        <div class="course-guarantee__header">
+                            <span class="course-guarantee__icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                                    <path d="M12 2.8l7.2 3v5.8c0 5-2.9 9.4-7.2 10.9-4.3-1.5-7.2-5.9-7.2-10.9V5.8l7.2-3z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"></path>
+                                    <path d="M8.5 12.2l2.3 2.3 4.8-4.9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path>
+                                </svg>
+                            </span>
+                            <div>
+                                <span class="course-guarantee__eyebrow">Risk-Free Enrollment</span>
+                                <div class="section-heading">
+                                    <h2><?php echo esc_html($course['guarantee']['title']); ?></h2>
+                                    <p class="section-subtitle"><?php echo esc_html($course['guarantee']['subtitle']); ?></p>
+                                </div>
+                            </div>
+                        </div>
+                        <p class="course-guarantee__text"><?php echo esc_html($course['guarantee']['text']); ?></p>
+                    </div>
+                    <div class="course-guarantee__panel">
+                        <?php if (!empty($course['guarantee']['points'])) : ?>
+                            <ul class="course-guarantee__points">
+                                <?php foreach ($course['guarantee']['points'] as $item) : ?>
+                                    <li><?php echo esc_html($item); ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php endif; ?>
+                        <?php if ($guarantee_cta && !empty($guarantee_cta['link'])) : ?>
+                            <div class="course-cta__actions">
+                                <a class="<?php echo esc_attr($guarantee_cta['class'] ?? 'primary-btn'); ?>" href="<?php echo esc_url($guarantee_cta['link']); ?>">
+                                    <?php echo esc_html($guarantee_cta['label']); ?>
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </section>
+    <?php endif; ?>
+
     <?php if (!empty($course['batch_info'])) : ?>
         <section class="section course-section course-batch" id="batch-info">
             <div class="container">

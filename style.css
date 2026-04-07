@@ -1158,6 +1158,10 @@ textarea {
   .course-step::after {
     display: none;
   }
+
+  .course-guarantee__card {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1183,6 +1187,35 @@ textarea {
 
   .course-whatsapp-support__text span {
     display: none;
+  }
+
+  .course-guarantee__card {
+    padding: 22px 18px;
+    gap: 18px;
+  }
+
+  .course-guarantee__header {
+    flex-direction: column;
+  }
+
+  .course-guarantee__icon {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+    border-radius: 18px;
+  }
+
+  .course-guarantee__icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .course-guarantee__text {
+    font-size: 15px;
+  }
+
+  .course-guarantee__points li {
+    padding: 13px 14px 13px 44px;
   }
 }
 
@@ -2284,6 +2317,118 @@ textarea {
 .course-pricing .course-price .course-cta__actions {
   grid-column: 1 / -1;
   margin-top: 6px;
+}
+
+.course-guarantee__card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 24px;
+  padding: 28px;
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(124, 210, 94, 0.18), rgba(12, 20, 46, 0.96) 42%, rgba(8, 14, 34, 0.98));
+  border: 1px solid rgba(156, 249, 90, 0.45);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.38), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.course-guarantee__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.course-guarantee__icon {
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: linear-gradient(160deg, rgba(191, 255, 160, 0.24), rgba(124, 210, 94, 0.14));
+  color: #d8ffb9;
+  border: 1px solid rgba(191, 255, 160, 0.35);
+  box-shadow: inset 0 0 18px rgba(191, 255, 160, 0.16), 0 18px 30px rgba(45, 81, 31, 0.25);
+}
+
+.course-guarantee__icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.course-guarantee__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(191, 255, 160, 0.12);
+  border: 1px solid rgba(191, 255, 160, 0.2);
+  color: #ccffb0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.course-guarantee__text {
+  margin: 18px 0 0;
+  max-width: 56ch;
+  color: #d9e8c8;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.course-guarantee__panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.course-guarantee__points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.course-guarantee__points li {
+  position: relative;
+  padding: 14px 16px 14px 48px;
+  border-radius: 16px;
+  background: rgba(191, 255, 160, 0.08);
+  border: 1px solid rgba(191, 255, 160, 0.18);
+  color: #edf8df;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.course-guarantee__points li::before {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #d8ffb9, #9cf95a);
+  box-shadow: 0 0 0 4px rgba(156, 249, 90, 0.14);
+}
+
+.course-guarantee__points li::after {
+  content: "";
+  position: absolute;
+  top: 21px;
+  left: 22px;
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid #0b1a26;
+  border-bottom: 2px solid #0b1a26;
+  transform: rotate(-45deg);
+}
+
+.course-guarantee .course-cta__actions {
+  margin-top: 4px;
 }
 
 .course-enroll .course-grid {

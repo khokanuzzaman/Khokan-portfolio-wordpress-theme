@@ -1233,6 +1233,84 @@ if (!function_exists('jrc_render_cta_block')) {
         </section>
     <?php endif; ?>
 
+    <?php if (!empty($course['pricing_cards']['cards']) && is_array($course['pricing_cards']['cards'])) : ?>
+        <?php
+        $pricing_cards_section = $course['pricing_cards'];
+        $pricing_cards_link = $enroll_link !== '' ? $enroll_link : '#course-application';
+        ?>
+        <section class="section course-section pricing-cards" id="pricing-cards" aria-labelledby="pricing-cards-title">
+            <div class="container">
+                <div class="section-heading">
+                    <h2 id="pricing-cards-title"><?php echo esc_html($pricing_cards_section['title']); ?></h2>
+                    <?php if (!empty($pricing_cards_section['subtitle'])) : ?>
+                        <p class="section-subtitle"><?php echo esc_html($pricing_cards_section['subtitle']); ?></p>
+                    <?php endif; ?>
+                </div>
+                <div class="pricing-cards__grid">
+                    <?php foreach ($pricing_cards_section['cards'] as $index => $card) : ?>
+                        <?php
+                        if (empty($card['name']) && empty($card['price'])) {
+                            continue;
+                        }
+                        $card_index = (int) $index;
+                        $card_name = $card['name'] ?? 'Payment Plan';
+                        $card_heading_id = 'pricing-card-' . sanitize_title($card_name) . '-' . $card_index;
+                        $card_badge_id = 'pricing-card-badge-' . $card_index;
+                        $card_features = !empty($card['features']) && is_array($card['features']) ? $card['features'] : [];
+                        $card_highlighted = !empty($card['highlighted']);
+                        $card_cta_class = $card_highlighted ? 'primary-btn' : 'secondary-btn';
+                        $card_cta_label = $card['cta_label'] ?? ($course['pricing']['cta'] ?? 'Choose Plan');
+                        ?>
+                        <article class="pricing-cards__card<?php echo $card_highlighted ? ' is-highlighted' : ''; ?>" aria-labelledby="<?php echo esc_attr($card_heading_id); ?>"<?php echo $card_highlighted ? ' aria-describedby="' . esc_attr($card_badge_id) . '"' : ''; ?>>
+                            <?php if ($card_highlighted) : ?>
+                                <span class="pricing-cards__badge" id="<?php echo esc_attr($card_badge_id); ?>">
+                                    <?php echo esc_html($card['savings'] ?? 'Most Popular'); ?>
+                                </span>
+                            <?php endif; ?>
+                            <header class="pricing-cards__header">
+                                <h3 class="pricing-cards__name" id="<?php echo esc_attr($card_heading_id); ?>"><?php echo esc_html($card_name); ?></h3>
+                                <div class="pricing-cards__price-wrap">
+                                    <strong class="pricing-cards__price"><?php echo esc_html($card['price'] ?? ''); ?></strong>
+                                    <?php if (!empty($card['subtitle'])) : ?>
+                                        <p class="pricing-cards__subtitle"><?php echo esc_html($card['subtitle']); ?></p>
+                                    <?php endif; ?>
+                                </div>
+                                <?php if (!$card_highlighted && !empty($card['savings'])) : ?>
+                                    <p class="pricing-cards__savings"><?php echo esc_html($card['savings']); ?></p>
+                                <?php endif; ?>
+                            </header>
+                            <?php if (!empty($card_features)) : ?>
+                                <ul class="pricing-cards__features">
+                                    <?php foreach ($card_features as $feature) : ?>
+                                        <?php if (trim((string) $feature) === '') : ?>
+                                            <?php continue; ?>
+                                        <?php endif; ?>
+                                        <li>
+                                            <span class="pricing-cards__feature-icon" aria-hidden="true">
+                                                <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                                                    <path d="M16.667 5L7.5 14.167L3.333 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                                                </svg>
+                                            </span>
+                                            <span><?php echo esc_html($feature); ?></span>
+                                        </li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php endif; ?>
+                            <footer class="pricing-cards__footer">
+                                <a class="pricing-cards__cta <?php echo esc_attr($card_cta_class); ?>" href="<?php echo esc_url($pricing_cards_link); ?>" aria-label="<?php echo esc_attr($card_cta_label . ' - ' . $card_name); ?>">
+                                    <?php echo esc_html($card_cta_label); ?>
+                                </a>
+                            </footer>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+                <?php if (!empty($pricing_cards_section['note'])) : ?>
+                    <p class="pricing-cards__note"><?php echo esc_html($pricing_cards_section['note']); ?></p>
+                <?php endif; ?>
+            </div>
+        </section>
+    <?php endif; ?>
+
     <?php if (!empty($course['pricing'])) : ?>
         <section class="section course-section course-pricing" id="pricing">
             <div class="container">

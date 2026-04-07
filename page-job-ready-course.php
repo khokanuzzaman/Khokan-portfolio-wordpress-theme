@@ -40,6 +40,12 @@ if (!empty($hero_secondary_cta['label']) && !empty($hero_secondary_cta['link']))
         'class' => $hero_secondary_cta['class'] ?? 'secondary-btn',
     ];
 }
+$hero_trust_items = [
+    '7-Day Money Back',
+    'Bangla Instruction',
+    'Real Industry Mentor',
+    'Affordable from ৳1,500/month',
+];
 $discount_cta_label = trim((string) ($course['discount_hook']['cta_label'] ?? ''));
 if ($discount_cta_label === '') {
     $discount_cta_label = $quiz_cta_label;
@@ -188,7 +194,14 @@ if (!function_exists('jrc_render_cta_block')) {
                     <ul class="course-hero__highlights">
                         <?php foreach ($course['hero']['highlights'] as $highlight) : ?>
                             <?php if (trim((string) $highlight) !== '') : ?>
-                                <li><?php echo esc_html($highlight); ?></li>
+                                <li>
+                                    <span class="course-hero__highlight-icon" aria-hidden="true">
+                                        <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                                            <path d="M16.667 5L7.5 14.167L3.333 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                                        </svg>
+                                    </span>
+                                    <span><?php echo esc_html($highlight); ?></span>
+                                </li>
                             <?php endif; ?>
                         <?php endforeach; ?>
                     </ul>
@@ -223,6 +236,20 @@ if (!function_exists('jrc_render_cta_block')) {
                         </li>
                     <?php endforeach; ?>
                 </ul>
+            </div>
+        </div>
+        <div class="container">
+            <div class="course-hero__trust-strip" aria-label="Course trust highlights">
+                <?php foreach ($hero_trust_items as $trust_item) : ?>
+                    <div class="course-hero__trust-item">
+                        <span class="course-hero__trust-icon" aria-hidden="true">
+                            <svg viewBox="0 0 20 20" fill="none" focusable="false">
+                                <path d="M16.667 5L7.5 14.167L3.333 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                            </svg>
+                        </span>
+                        <span><?php echo esc_html($trust_item); ?></span>
+                    </div>
+                <?php endforeach; ?>
             </div>
         </div>
     </section>

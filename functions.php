@@ -1439,6 +1439,7 @@ function jrc_handle_application_submit()
     $reason = isset($_POST['student_reason']) ? sanitize_textarea_field(wp_unslash($_POST['student_reason'])) : '';
     $goal = isset($_POST['student_goal']) ? sanitize_textarea_field(wp_unslash($_POST['student_goal'])) : '';
     $time = isset($_POST['student_time']) ? sanitize_text_field(wp_unslash($_POST['student_time'])) : '';
+    $payment_plan = isset($_POST['student_payment_plan']) ? sanitize_text_field(wp_unslash($_POST['student_payment_plan'])) : '';
     $referral = isset($_POST['student_referral']) ? sanitize_text_field(wp_unslash($_POST['student_referral'])) : '';
     $referral_other = isset($_POST['student_referral_other']) ? sanitize_text_field(wp_unslash($_POST['student_referral_other'])) : '';
     if ($referral !== 'Other') {
@@ -1506,6 +1507,7 @@ function jrc_handle_application_submit()
     update_post_meta($post_id, 'student_reason', $reason);
     update_post_meta($post_id, 'student_goal', $goal);
     update_post_meta($post_id, 'student_time', $time);
+    update_post_meta($post_id, 'student_payment_plan', $payment_plan);
     update_post_meta($post_id, 'student_referral', $referral);
     update_post_meta($post_id, 'student_referral_other', $referral_other);
     update_post_meta($post_id, 'student_consent', $consent ? 'yes' : 'no');

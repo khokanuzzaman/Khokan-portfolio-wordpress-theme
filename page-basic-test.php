@@ -6,347 +6,517 @@
 
 get_header();
 
-$quiz = function_exists('jrc_get_quiz_data') ? jrc_get_quiz_data() : [];
-$questions = $quiz['questions'] ?? [];
-$time_limit = (int) ($quiz['time_limit'] ?? 0);
-$pass_percent = (int) ($quiz['pass_percent'] ?? 60);
-$ajax_url = admin_url('admin-ajax.php');
-$quiz_nonce = wp_create_nonce('jrc_quiz_submit');
-$languages = function_exists('jrc_get_quiz_language_map') ? jrc_get_quiz_language_map($questions) : [];
-$default_language = count($languages) === 1 ? array_key_first($languages) : '';
+$apply_links = [
+    'react' => function_exists('jrc_get_course_application_page_url')
+        ? jrc_get_course_application_page_url('react')
+        : home_url('/'),
+    'flutter' => function_exists('jrc_get_course_application_page_url')
+        ? jrc_get_course_application_page_url('flutter')
+        : home_url('/'),
+];
+
+$career_questions = [
+    [
+        'id' => 'q1',
+        'question' => 'তুমি কোন device বেশি ব্যবহার করো?',
+        'options' => [
+            ['value' => 'mobile', 'label' => 'Mobile phone', 'react' => 0, 'flutter' => 2],
+            ['value' => 'laptop', 'label' => 'Laptop/Computer', 'react' => 2, 'flutter' => 0],
+            ['value' => 'both', 'label' => 'Both equally', 'react' => 1, 'flutter' => 1],
+        ],
+    ],
+    [
+        'id' => 'q2',
+        'question' => 'কোন ধরনের project তোমাকে বেশি excite করে?',
+        'options' => [
+            ['value' => 'mobile_apps', 'label' => 'Mobile apps যেমন Foodpanda, Pathao', 'react' => 0, 'flutter' => 2],
+            ['value' => 'websites', 'label' => 'Websites যেমন Daraz, Facebook', 'react' => 2, 'flutter' => 0],
+        ],
+    ],
+    [
+        'id' => 'q3',
+        'question' => 'তোমার primary career goal কী?',
+        'options' => [
+            ['value' => 'freelancing', 'label' => 'International freelancing', 'react' => 2, 'flutter' => 0],
+            ['value' => 'startup_job', 'label' => 'Local startup এ job', 'react' => 0, 'flutter' => 2],
+            ['value' => 'both', 'label' => 'Both', 'react' => 1, 'flutter' => 1],
+        ],
+    ],
+    [
+        'id' => 'q4',
+        'question' => 'Visual design তোমার কাছে কতটা important?',
+        'options' => [
+            ['value' => 'very_important', 'label' => 'খুব important', 'react' => 0, 'flutter' => 2],
+            ['value' => 'functionality_first', 'label' => 'Functionality আরও important', 'react' => 2, 'flutter' => 0],
+        ],
+    ],
+    [
+        'id' => 'q5',
+        'question' => 'তোমার laptop spec?',
+        'options' => [
+            ['value' => '4gb', 'label' => '4GB RAM', 'react' => 1, 'flutter' => 0],
+            ['value' => '8gb_plus', 'label' => '8GB+ RAM', 'react' => 1, 'flutter' => 1],
+        ],
+    ],
+    [
+        'id' => 'q6',
+        'question' => 'তুমি কোনটা আগে শিখেছ?',
+        'options' => [
+            ['value' => 'html_css_js', 'label' => 'HTML/CSS/JavaScript', 'react' => 2, 'flutter' => 0],
+            ['value' => 'java_cpp_python', 'label' => 'Java/C++/Python', 'react' => 0, 'flutter' => 2],
+            ['value' => 'nothing_yet', 'label' => 'কিছুই না', 'react' => 1, 'flutter' => 1],
+        ],
+    ],
+    [
+        'id' => 'q7',
+        'question' => 'তুমি Bangladesh এ থাকবে নাকি foreign এ যাবে?',
+        'options' => [
+            ['value' => 'bangladesh', 'label' => 'Bangladesh', 'react' => 0, 'flutter' => 2],
+            ['value' => 'foreign_remote', 'label' => 'Foreign/Remote', 'react' => 2, 'flutter' => 0],
+        ],
+    ],
+];
 ?>
 <main class="course-page">
     <section class="section quiz-section">
         <div class="container quiz-card">
             <div class="section-heading">
-                <h2><?php echo esc_html($quiz['title'] ?? 'Basic Programming Test'); ?></h2>
-                <?php if (!empty($quiz['subtitle'])) : ?>
-                    <p class="section-subtitle"><?php echo esc_html($quiz['subtitle']); ?></p>
-                <?php endif; ?>
+                <h2>Career Path Quiz</h2>
+                <p class="section-subtitle">React নাকি Flutter? এই 7টা quick question answer করো, তারপর তোমার best-fit track আর discount code দেখে নাও.</p>
             </div>
-            <?php if (!empty($quiz['discount_note'])) : ?>
-                <div class="quiz-discount"><?php echo esc_html($quiz['discount_note']); ?></div>
-            <?php endif; ?>
-            <div class="quiz-meta">
-                <?php if ($time_limit > 0) : ?>
-                    <span class="quiz-meta__item">Time: <?php echo esc_html($time_limit); ?> minutes</span>
-                    <span class="quiz-meta__item" id="quiz-timer"></span>
-                <?php endif; ?>
-                <span class="quiz-meta__item">Pass: <?php echo esc_html($pass_percent); ?>%</span>
-            </div>
-            <?php if (count($languages) > 1) : ?>
-                <div class="quiz-language">
-                    <label for="quiz-language">Language</label>
-                    <select id="quiz-language">
-                        <?php foreach ($languages as $language_key => $language_label) : ?>
-                            <option value="<?php echo esc_attr($language_key); ?>"><?php echo esc_html($language_label); ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            <?php endif; ?>
 
-            <form id="basic-quiz" class="quiz-form"
-                data-time="<?php echo esc_attr($time_limit); ?>"
-                data-ajax="<?php echo esc_url($ajax_url); ?>"
-                data-nonce="<?php echo esc_attr($quiz_nonce); ?>"
-                data-default-language="<?php echo esc_attr($default_language); ?>">
-                <div class="quiz-user">
-                    <div class="quiz-user__title">Student Info</div>
-                    <div class="quiz-user__grid">
-                        <label class="quiz-user__field">
-                            <span>Full Name *</span>
-                            <input class="quiz-input" id="quiz-student-name" name="student_name" type="text" autocomplete="name" required>
-                        </label>
-                        <label class="quiz-user__field">
-                            <span>Phone *</span>
-                            <input class="quiz-input" id="quiz-student-phone" name="student_phone" type="tel" autocomplete="tel" required>
-                        </label>
-                        <label class="quiz-user__field">
-                            <span>Email</span>
-                            <input class="quiz-input" id="quiz-student-email" name="student_email" type="email" autocomplete="email">
-                        </label>
-                    </div>
-                    <p class="quiz-user__note">Basic test নেওয়ার আগে নাম ও ফোন দিন। Result save হবে এবং next step admin review-এর জন্য ব্যবহার হবে।</p>
-                </div>
-                <div style="position:absolute;left:-9999px;" aria-hidden="true">
-                    <label for="quiz-website">Website</label>
-                    <input type="text" id="quiz-website" name="quiz_website" tabindex="-1" autocomplete="off">
-                </div>
-                <?php foreach ($questions as $index => $question) : ?>
-                    <?php
-                    $question_id = 'q' . $index;
-                    $question_text = nl2br(esc_html($question['question'] ?? ''));
-                    $question_type = $question['type'] ?? 'mcq';
-                    $options = $question['options'] ?? [];
-                    ?>
-                    <?php $language_key = sanitize_title(trim($question['language'] ?? '')); ?>
-                    <div class="quiz-question" data-language="<?php echo esc_attr($language_key); ?>" data-type="<?php echo esc_attr($question_type); ?>">
+            <div class="quiz-discount">Finish the quiz and unlock coupon code <strong>QUIZ1000</strong> for BDT 1,000 off.</div>
+
+            <div class="quiz-meta">
+                <span class="quiz-meta__item" id="career-quiz-progress">Answered: 0/<?php echo esc_html(count($career_questions)); ?></span>
+                <span class="quiz-meta__item" id="career-quiz-status">2-3 minute-এ শেষ হবে.</span>
+                <span class="quiz-meta__item">Result is shareable by URL</span>
+            </div>
+
+            <noscript>
+                <p class="section-subtitle">এই quiz চালাতে JavaScript চালু থাকতে হবে।</p>
+            </noscript>
+
+            <form
+                id="career-quiz"
+                class="quiz-form"
+                data-storage-key="khokan-career-path-quiz-v1"
+                data-apply-react="<?php echo esc_url($apply_links['react']); ?>"
+                data-apply-flutter="<?php echo esc_url($apply_links['flutter']); ?>">
+                <?php foreach ($career_questions as $index => $question) : ?>
+                    <div class="quiz-question" data-question="<?php echo esc_attr($question['id']); ?>">
                         <div class="quiz-question__title">
                             <span class="quiz-question__label">Q<?php echo esc_html($index + 1); ?></span>
-                            <span class="quiz-question__text"><?php echo $question_text; ?></span>
+                            <span class="quiz-question__text"><?php echo esc_html($question['question']); ?></span>
                         </div>
-                        <?php if ($question_type === 'mcq') : ?>
-                            <div class="quiz-options">
-                                <?php foreach ($options as $option_index => $option) : ?>
-                                    <label class="quiz-option">
-                                        <input type="radio" name="<?php echo esc_attr($question_id); ?>" value="<?php echo esc_attr($option); ?>">
-                                        <span><?php echo esc_html($option); ?></span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php elseif ($question_type === 'output') : ?>
-                            <textarea class="quiz-input" name="<?php echo esc_attr($question_id); ?>" rows="3" placeholder="Write the output"></textarea>
-                        <?php else : ?>
-                            <input class="quiz-input" type="text" name="<?php echo esc_attr($question_id); ?>" placeholder="Your answer">
-                        <?php endif; ?>
+
+                        <div class="quiz-options">
+                            <?php foreach ($question['options'] as $option) : ?>
+                                <label class="quiz-option">
+                                    <input
+                                        type="radio"
+                                        name="<?php echo esc_attr($question['id']); ?>"
+                                        value="<?php echo esc_attr($option['value']); ?>"
+                                        data-react="<?php echo esc_attr((string) $option['react']); ?>"
+                                        data-flutter="<?php echo esc_attr((string) $option['flutter']); ?>">
+                                    <span><?php echo esc_html($option['label']); ?></span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
 
                 <div class="quiz-actions">
-                    <button type="submit" class="primary-btn">Submit Test</button>
-                    <button type="button" class="secondary-btn" id="quiz-reset">Reset</button>
+                    <button type="submit" class="primary-btn">See My Best Track</button>
+                    <button type="button" class="secondary-btn" id="career-quiz-reset">Reset</button>
                 </div>
             </form>
-            <div id="quiz-result" class="quiz-result" hidden></div>
+
+            <div id="career-quiz-result" class="quiz-result" hidden></div>
         </div>
     </section>
 </main>
 <script>
     (function () {
-        var form = document.getElementById('basic-quiz');
+        var form = document.getElementById('career-quiz');
         if (!form) {
             return;
         }
+
+        var resultBox = document.getElementById('career-quiz-result');
+        var progressBox = document.getElementById('career-quiz-progress');
+        var statusBox = document.getElementById('career-quiz-status');
+        var resetBtn = document.getElementById('career-quiz-reset');
         var questions = Array.prototype.slice.call(form.querySelectorAll('.quiz-question'));
-        var languageSelect = document.getElementById('quiz-language');
-        var result = document.getElementById('quiz-result');
-        var resetBtn = document.getElementById('quiz-reset');
-        var timerOutput = document.getElementById('quiz-timer');
-        var timeLimit = parseInt(form.getAttribute('data-time'), 10) || 0;
-        var ajaxUrl = form.getAttribute('data-ajax') || '';
-        var nonce = form.getAttribute('data-nonce') || '';
-        var defaultLanguage = form.getAttribute('data-default-language') || '';
-        var nameInput = document.getElementById('quiz-student-name');
-        var phoneInput = document.getElementById('quiz-student-phone');
-        var emailInput = document.getElementById('quiz-student-email');
-        var honeypotInput = document.getElementById('quiz-website');
-        var submitBtn = form.querySelector('button[type="submit"]');
-        var timerId = null;
-        var isSubmitting = false;
+        var storageKey = form.getAttribute('data-storage-key') || 'khokan-career-path-quiz-v1';
+        var totalQuestions = questions.length;
+        var resultParams = ['career_track', 'career_react', 'career_flutter'];
+        var lastResult = null;
 
-        function filterByLanguage(lang) {
-            var normalized = String(lang || '').trim().toLowerCase();
-            questions.forEach(function (question) {
-                var qLang = String(question.getAttribute('data-language') || '').trim().toLowerCase();
-                var visible = !normalized || qLang === normalized;
-                question.hidden = !visible;
-                question.style.display = visible ? '' : 'none';
-                if (!visible) {
-                    var checked = question.querySelector('input[type="radio"]:checked');
-                    if (checked) {
-                        checked.checked = false;
-                    }
-                    var input = question.querySelector('.quiz-input');
-                    if (input) {
-                        input.value = '';
-                    }
+        function createElement(tag, className, text) {
+            var element = document.createElement(tag);
+            if (className) {
+                element.className = className;
+            }
+            if (typeof text === 'string') {
+                element.textContent = text;
+            }
+            return element;
+        }
+
+        function storageGet() {
+            try {
+                return window.localStorage ? window.localStorage.getItem(storageKey) : null;
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function storageSet(value) {
+            try {
+                if (window.localStorage) {
+                    window.localStorage.setItem(storageKey, value);
                 }
-            });
+            } catch (error) {
+            }
         }
 
-        function getVisibleQuestions() {
-            return questions.filter(function (question) {
-                return !question.hidden;
-            });
+        function storageRemove() {
+            try {
+                if (window.localStorage) {
+                    window.localStorage.removeItem(storageKey);
+                }
+            } catch (error) {
+            }
         }
 
-        function clearResult() {
-            if (!result) {
-                return;
+        function readState() {
+            var raw = storageGet();
+            if (!raw) {
+                return { answers: {} };
             }
 
-            result.hidden = true;
-            result.replaceChildren();
-        }
-
-        function showMessage(message) {
-            if (!result) {
-                return;
+            try {
+                var parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    return parsed;
+                }
+            } catch (error) {
             }
 
-            result.hidden = false;
-            result.replaceChildren();
-
-            var paragraph = document.createElement('p');
-            paragraph.textContent = message;
-            result.appendChild(paragraph);
+            return { answers: {} };
         }
 
-        function showResult(payload) {
-            if (!result) {
-                return;
-            }
-
-            var note = payload.redirect
-                ? 'Test submitted. Enrollment form খুলছে...'
-                : 'Test submitted. Your result has been saved.';
-
-            result.hidden = false;
-            result.replaceChildren();
-
-            var strong = document.createElement('strong');
-            strong.textContent = 'Score:';
-
-            var summary = document.createTextNode(
-                ' ' + payload.score + '/' + payload.total +
-                ' (' + payload.percent + '%) - ' + (payload.passed ? 'Passed' : 'Needs Foundation')
-            );
-            var noteNode = document.createElement('div');
-            noteNode.textContent = note;
-
-            result.appendChild(strong);
-            result.appendChild(summary);
-            result.appendChild(noteNode);
-        }
-
-        function collectAnswers() {
+        function getAnswers() {
             var answers = {};
 
-            getVisibleQuestions().forEach(function (question) {
+            questions.forEach(function (question) {
                 var checked = question.querySelector('input[type="radio"]:checked');
                 if (checked) {
                     answers[checked.name] = checked.value;
-                    return;
-                }
-
-                var input = question.querySelector('.quiz-input');
-                if (input && input.name) {
-                    answers[input.name] = input.value || '';
-                    return;
-                }
-
-                var radio = question.querySelector('input[type="radio"]');
-                if (radio && radio.name) {
-                    answers[radio.name] = '';
                 }
             });
 
             return answers;
         }
 
-        form.addEventListener('submit', function (event) {
-            event.preventDefault();
-            if (isSubmitting) {
-                return;
+        function writeState() {
+            var payload = {
+                answers: getAnswers()
+            };
+
+            if (lastResult) {
+                payload.result = lastResult;
             }
 
-            var missing = [];
-            if (nameInput && !nameInput.value.trim()) {
-                missing.push('নাম');
-            }
-            if (phoneInput && !phoneInput.value.trim()) {
-                missing.push('ফোন');
-            }
-            if (missing.length) {
-                showMessage('অনুগ্রহ করে দিন: ' + missing.join(', '));
-                return;
-            }
-            if (typeof form.reportValidity === 'function' && !form.reportValidity()) {
-                showMessage('ফর্মের প্রয়োজনীয় তথ্য দিন।');
-                return;
+            storageSet(JSON.stringify(payload));
+        }
+
+        function restoreAnswers(answers) {
+            Object.keys(answers || {}).forEach(function (name) {
+                var value = answers[name];
+                var selector = 'input[name="' + name + '"][value="' + value + '"]';
+                var input = form.querySelector(selector);
+                if (input) {
+                    input.checked = true;
+                }
+            });
+        }
+
+        function countAnswered() {
+            return Object.keys(getAnswers()).length;
+        }
+
+        function updateProgress() {
+            var answered = countAnswered();
+
+            if (progressBox) {
+                progressBox.textContent = 'Answered: ' + answered + '/' + totalQuestions;
             }
 
-            var language = languageSelect ? (languageSelect.value || '') : defaultLanguage;
-            var answers = collectAnswers();
-            var formData = new FormData();
+            if (statusBox) {
+                statusBox.textContent = answered === totalQuestions
+                    ? 'সব answer হয়েছে. এখন result দেখো.'
+                    : '2-3 minute-এ শেষ হবে.';
+            }
+        }
 
-            formData.append('action', 'jrc_quiz_submit');
-            formData.append('nonce', nonce);
-            formData.append('student_name', nameInput ? nameInput.value : '');
-            formData.append('student_phone', phoneInput ? phoneInput.value : '');
-            formData.append('student_email', emailInput ? emailInput.value : '');
-            formData.append('language', language);
-            formData.append('quiz_website', honeypotInput ? honeypotInput.value : '');
+        function clearResultParams() {
+            var url = new URL(window.location.href);
+            var changed = false;
 
-            Object.keys(answers).forEach(function (key) {
-                formData.append('answers[' + key + ']', answers[key]);
+            resultParams.forEach(function (key) {
+                if (url.searchParams.has(key)) {
+                    url.searchParams.delete(key);
+                    changed = true;
+                }
             });
 
-            isSubmitting = true;
-            if (submitBtn) {
-                submitBtn.disabled = true;
+            if (changed) {
+                window.history.replaceState({}, '', url.toString());
             }
-            showMessage('Submitting your test...');
+        }
 
-            fetch(ajaxUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                body: formData
-            }).then(function (response) {
-                return response.json().catch(function () {
-                    return {
-                        success: false,
-                        data: {
-                            message: 'Could not submit the test right now.'
-                        }
-                    };
-                });
-            }).then(function (payload) {
-                if (!payload || !payload.success || !payload.data) {
-                    showMessage(payload && payload.data && payload.data.message ? payload.data.message : 'Could not submit the test right now.');
+        function hideResult(options) {
+            if (resultBox) {
+                resultBox.hidden = true;
+                resultBox.replaceChildren();
+            }
+
+            lastResult = null;
+
+            if (!options || options.clearUrl !== false) {
+                clearResultParams();
+            }
+        }
+
+        function showMessage(message) {
+            hideResult({ clearUrl: false });
+
+            if (!resultBox) {
+                return;
+            }
+
+            resultBox.hidden = false;
+            resultBox.replaceChildren();
+            resultBox.appendChild(createElement('p', '', message));
+        }
+
+        function buildResultData(reactScore, flutterScore) {
+            var isTie = reactScore === flutterScore;
+            var track = reactScore >= flutterScore ? 'react' : 'flutter';
+            var trackTitle = track === 'react' ? 'React Track Recommended' : 'Flutter Track Recommended';
+            var trackLabel = track === 'react' ? 'React' : 'Flutter';
+            var reason = '';
+
+            if (track === 'react') {
+                reason = isTie
+                    ? 'দুই track-এই তোমার interest আছে, but React দিয়ে start করলে দ্রুত web portfolio build, remote/freelancing target, আর lightweight setup ধরে momentum তোলা সহজ হবে।'
+                    : 'তোমার answers দেখাচ্ছে web products, browser-based work, আর remote/freelancing direction তোমার সাথে বেশি match করছে। তাই React track তোমার জন্য better fit।';
+            } else {
+                reason = 'তোমার answers দেখাচ্ছে mobile-first product thinking, app experience, আর Bangladesh/local startup job track তোমার সাথে বেশি match করছে। তাই Flutter track তোমার জন্য stronger choice।';
+            }
+
+            var shareUrl = new URL(window.location.href);
+            resultParams.forEach(function (key) {
+                shareUrl.searchParams.delete(key);
+            });
+            shareUrl.searchParams.set('career_track', track);
+            shareUrl.searchParams.set('career_react', String(reactScore));
+            shareUrl.searchParams.set('career_flutter', String(flutterScore));
+
+            return {
+                track: track,
+                trackTitle: trackTitle,
+                trackLabel: trackLabel,
+                reactScore: reactScore,
+                flutterScore: flutterScore,
+                isTie: isTie,
+                reason: reason,
+                discountCode: 'QUIZ1000',
+                discountLabel: 'BDT 1,000 off',
+                applyUrl: track === 'react'
+                    ? (form.getAttribute('data-apply-react') || '')
+                    : (form.getAttribute('data-apply-flutter') || ''),
+                shareUrl: shareUrl.toString()
+            };
+        }
+
+        function calculateScores() {
+            var reactScore = 0;
+            var flutterScore = 0;
+
+            questions.forEach(function (question) {
+                var checked = question.querySelector('input[type="radio"]:checked');
+                if (!checked) {
                     return;
                 }
 
-                showResult(payload.data);
-
-                if (payload.data.redirect) {
-                    setTimeout(function () {
-                        window.location.href = payload.data.redirect;
-                    }, 2000);
-                }
-            }).catch(function () {
-                showMessage('Could not submit the test right now.');
-            }).finally(function () {
-                isSubmitting = false;
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                }
+                reactScore += parseInt(checked.getAttribute('data-react') || '0', 10);
+                flutterScore += parseInt(checked.getAttribute('data-flutter') || '0', 10);
             });
+
+            return buildResultData(reactScore, flutterScore);
+        }
+
+        function renderResult(data, options) {
+            options = options || {};
+            lastResult = data;
+
+            if (!resultBox) {
+                return;
+            }
+
+            resultBox.hidden = false;
+            resultBox.replaceChildren();
+
+            var heading = createElement('div', 'section-heading');
+            heading.appendChild(createElement('h2', '', data.trackTitle));
+            heading.appendChild(createElement(
+                'p',
+                'section-subtitle',
+                data.isTie
+                    ? 'Balanced score এসেছে, but শুরুতে one clear path নিলে faster progress হবে।'
+                    : 'এই track-এ তোমার answers stronger match দেখাচ্ছে।'
+            ));
+            resultBox.appendChild(heading);
+
+            var grid = createElement('div', 'course-grid course-grid--two');
+
+            var summaryCard = createElement('div', 'course-card');
+            summaryCard.appendChild(createElement('div', 'quiz-discount', 'Recommended Track: ' + data.trackLabel));
+
+            var scoreMeta = createElement('div', 'quiz-meta');
+            scoreMeta.appendChild(createElement('span', 'quiz-meta__item', 'React Score: ' + data.reactScore));
+            scoreMeta.appendChild(createElement('span', 'quiz-meta__item', 'Flutter Score: ' + data.flutterScore));
+            summaryCard.appendChild(scoreMeta);
+
+            summaryCard.appendChild(createElement('h3', '', 'Why this fits you'));
+            summaryCard.appendChild(createElement('p', 'section-subtitle', data.reason));
+            grid.appendChild(summaryCard);
+
+            var offerCard = createElement('div', 'course-card');
+            offerCard.appendChild(createElement('div', 'quiz-discount', 'Discount Code: ' + data.discountCode));
+            offerCard.appendChild(createElement('h3', '', 'Use this on enrollment'));
+            offerCard.appendChild(createElement('p', 'section-subtitle', 'এই quiz complete করলে তুমি ' + data.discountLabel + ' পাবে। Apply করার সময় codeটা mention করো: ' + data.discountCode + '.'));
+
+            var shareLabel = createElement('p', 'section-subtitle', 'Share this result link:');
+            offerCard.appendChild(shareLabel);
+
+            var shareInput = createElement('input', 'quiz-input');
+            shareInput.type = 'text';
+            shareInput.readOnly = true;
+            shareInput.value = data.shareUrl;
+            offerCard.appendChild(shareInput);
+
+            var actions = createElement('div', 'quiz-actions');
+
+            if (data.applyUrl) {
+                var applyLink = createElement('a', 'primary-btn', 'Apply Now');
+                applyLink.href = data.applyUrl;
+                actions.appendChild(applyLink);
+            }
+
+            var copyBtn = createElement('button', 'secondary-btn', 'Copy Result Link');
+            copyBtn.type = 'button';
+            copyBtn.addEventListener('click', function () {
+                var originalText = copyBtn.textContent;
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(shareInput.value).then(function () {
+                        copyBtn.textContent = 'Link Copied';
+                        setTimeout(function () {
+                            copyBtn.textContent = originalText;
+                        }, 1600);
+                    }).catch(function () {
+                        shareInput.focus();
+                        shareInput.select();
+                    });
+                    return;
+                }
+
+                shareInput.focus();
+                shareInput.select();
+            });
+            actions.appendChild(copyBtn);
+
+            offerCard.appendChild(actions);
+            grid.appendChild(offerCard);
+
+            resultBox.appendChild(grid);
+
+            if (options.updateUrl !== false) {
+                window.history.replaceState({}, '', data.shareUrl);
+            }
+
+            if (options.saveState !== false) {
+                writeState();
+            }
+
+            if (options.scroll !== false) {
+                resultBox.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        }
+
+        function readResultFromUrl() {
+            var url = new URL(window.location.href);
+            var reactScore = parseInt(url.searchParams.get('career_react') || '', 10);
+            var flutterScore = parseInt(url.searchParams.get('career_flutter') || '', 10);
+            var track = url.searchParams.get('career_track') || '';
+
+            if ((track !== 'react' && track !== 'flutter') || Number.isNaN(reactScore) || Number.isNaN(flutterScore)) {
+                return null;
+            }
+
+            return buildResultData(reactScore, flutterScore);
+        }
+
+        form.addEventListener('change', function () {
+            updateProgress();
+
+            if (lastResult) {
+                hideResult();
+            }
+
+            writeState();
+        });
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            if (countAnswered() !== totalQuestions) {
+                showMessage('সব 7টা question answer করো, তারপর তোমার recommended track দেখানো হবে।');
+                writeState();
+                return;
+            }
+
+            renderResult(calculateScores());
         });
 
         if (resetBtn) {
             resetBtn.addEventListener('click', function () {
                 form.reset();
-                clearResult();
+                storageRemove();
+                hideResult();
+                updateProgress();
             });
         }
 
-        if (languageSelect) {
-            if (!languageSelect.value && languageSelect.options.length) {
-                languageSelect.value = languageSelect.options[0].value;
-            }
-            filterByLanguage(languageSelect.value);
-            languageSelect.addEventListener('change', function () {
-                filterByLanguage(languageSelect.value);
-            });
-        } else if (defaultLanguage) {
-            filterByLanguage(defaultLanguage);
+        var savedState = readState();
+        restoreAnswers(savedState.answers || {});
+        updateProgress();
+
+        var sharedResult = readResultFromUrl();
+        if (sharedResult) {
+            renderResult(sharedResult, { updateUrl: false });
+            return;
         }
 
-        if (timeLimit > 0 && timerOutput) {
-            var remaining = timeLimit * 60;
-            timerOutput.textContent = 'Time left: ' + Math.ceil(remaining / 60) + 'm';
-            timerId = setInterval(function () {
-                remaining -= 1;
-                if (remaining < 0) {
-                    clearInterval(timerId);
-                    form.dispatchEvent(new Event('submit', { cancelable: true }));
-                    return;
-                }
-                var mins = Math.floor(remaining / 60);
-                var secs = remaining % 60;
-                timerOutput.textContent = 'Time left: ' + mins + 'm ' + secs + 's';
-            }, 1000);
+        if (savedState.result) {
+            renderResult(savedState.result, { updateUrl: false, scroll: false });
         }
     })();
 </script>

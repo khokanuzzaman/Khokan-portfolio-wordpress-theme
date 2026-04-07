@@ -1573,16 +1573,106 @@ if (!function_exists('jrc_render_cta_block')) {
     <?php endif; ?>
 
     <?php if (!empty($course['faq'])) : ?>
+        <?php
+        $faq_categories = [
+            'about_course' => [
+                'title' => 'About the Course',
+                'items' => [],
+            ],
+            'pricing_payment' => [
+                'title' => 'Pricing & Payment',
+                'items' => [],
+            ],
+            'technical_requirements' => [
+                'title' => 'Technical Requirements',
+                'items' => [],
+            ],
+            'career_outcomes' => [
+                'title' => 'Career & Outcomes',
+                'items' => [],
+            ],
+        ];
+        $faq_matches = static function ($text, array $keywords) {
+            foreach ($keywords as $keyword) {
+                if ($keyword !== '' && stripos($text, $keyword) !== false) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        foreach ($course['faq'] as $item) {
+            $question = trim((string) ($item['q'] ?? ''));
+            $answer = trim((string) ($item['a'] ?? ''));
+            if ($question === '' && $answer === '') {
+                continue;
+            }
+
+            $faq_text = $question . ' ' . $answer;
+            $category_key = 'about_course';
+            if ($faq_matches($faq_text, ['discount', 'price', 'installment', 'payment', 'refund', 'money back', 'money-back', '৳'])) {
+                $category_key = 'pricing_payment';
+            } elseif ($faq_matches($faq_text, ['laptop', 'requirement', 'prior coding', 'prior programming', 'programming knowledge', 'ai tools', 'tools access', 'ram', 'software'])) {
+                $category_key = 'technical_requirements';
+            } elseif ($faq_matches($faq_text, ['job', 'career', 'project', 'portfolio', 'deployment', 'tutorial', 'interview', 'real projects', 'outcome'])) {
+                $category_key = 'career_outcomes';
+            }
+
+            $faq_categories[$category_key]['items'][] = [
+                'q' => $question,
+                'a' => $answer,
+            ];
+        }
+        ?>
         <section class="section course-section course-faqs" id="faq">
             <div class="container">
                 <div class="section-heading">
                     <h2><?php echo esc_html($course['faq_title']); ?></h2>
                 </div>
-                <div class="course-faq">
-                    <?php foreach ($course['faq'] as $item) : ?>
-                        <div class="course-faq__item">
-                            <h3><?php echo esc_html($item['q']); ?></h3>
-                            <p><?php echo esc_html($item['a']); ?></p>
+                <div class="course-faq__search">
+                    <label class="course-faq__search-label" for="course-faq-search">Search FAQ</label>
+                    <input
+                        class="course-faq__search-input"
+                        id="course-faq-search"
+                        type="search"
+                        placeholder="Type keyword... যেমন refund, laptop, mentor"
+                        autocomplete="off"
+                        aria-controls="course-faq-categories"
+                        data-faq-search-input
+                    >
+                </div>
+                <p class="course-faq__no-results" data-faq-no-results hidden role="status" aria-live="polite">
+                    No results found. অন্য keyword try করো।
+                </p>
+                <div class="course-faq" id="course-faq-categories">
+                    <?php foreach ($faq_categories as $category_key => $category) : ?>
+                        <?php if (empty($category['items'])) : ?>
+                            <?php continue; ?>
+                        <?php endif; ?>
+                        <div class="course-faq__category" data-faq-category>
+                            <h3 class="course-faq__category-title"><?php echo esc_html($category['title']); ?></h3>
+                            <div class="course-faq__category-list">
+                                <?php foreach ($category['items'] as $item) : ?>
+                                    <?php
+                                    $faq_search_text = trim($item['q'] . ' ' . $item['a']);
+                                    ?>
+                                    <details class="course-faq__item" data-faq-item data-faq-search="<?php echo esc_attr($faq_search_text); ?>">
+                                        <summary>
+                                            <span class="course-faq__question" data-faq-question data-original-text="<?php echo esc_attr($item['q']); ?>">
+                                                <?php echo esc_html($item['q']); ?>
+                                            </span>
+                                            <span class="course-faq__toggle" aria-hidden="true"></span>
+                                        </summary>
+                                        <div class="course-faq__answer-wrap">
+                                            <div class="course-faq__answer">
+                                                <p class="course-faq__answer-text" data-faq-answer data-original-text="<?php echo esc_attr($item['a']); ?>">
+                                                    <?php echo esc_html($item['a']); ?>
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </details>
+                                <?php endforeach; ?>
+                            </div>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -2123,6 +2213,101 @@ if (!function_exists('jrc_render_cta_block')) {
 
         toggleVisibility();
         window.addEventListener('scroll', toggleVisibility, { passive: true });
+    })();
+</script>
+<script>
+    (function () {
+        var searchInput = document.querySelector('[data-faq-search-input]');
+        var categories = Array.prototype.slice.call(document.querySelectorAll('[data-faq-category]'));
+        var noResults = document.querySelector('[data-faq-no-results]');
+        if (!searchInput || !categories.length || !noResults) {
+            return;
+        }
+
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function escapeRegExp(text) {
+            return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function buildTokens(value) {
+            return value
+                .toLowerCase()
+                .split(/\s+/)
+                .filter(Boolean);
+        }
+
+        function highlightText(text, tokens) {
+            var safeText = escapeHtml(text);
+            if (!tokens.length) {
+                return safeText;
+            }
+
+            var pattern = new RegExp('(' + tokens.map(escapeRegExp).sort(function (a, b) {
+                return b.length - a.length;
+            }).join('|') + ')', 'ig');
+            return safeText.replace(pattern, '<mark>$1</mark>');
+        }
+
+        function restoreNodeText(node, tokens) {
+            if (!node) {
+                return;
+            }
+
+            var originalText = node.getAttribute('data-original-text') || '';
+            node.innerHTML = highlightText(originalText, tokens);
+        }
+
+        function updateFilter() {
+            var tokens = buildTokens(searchInput.value.trim());
+            var visibleItems = 0;
+
+            categories.forEach(function (category) {
+                var categoryVisible = 0;
+                var items = Array.prototype.slice.call(category.querySelectorAll('[data-faq-item]'));
+
+                items.forEach(function (item) {
+                    var haystack = (item.getAttribute('data-faq-search') || '').toLowerCase();
+                    var matches = !tokens.length || tokens.every(function (token) {
+                        return haystack.indexOf(token) !== -1;
+                    });
+
+                    restoreNodeText(item.querySelector('[data-faq-question]'), tokens);
+                    restoreNodeText(item.querySelector('[data-faq-answer]'), tokens);
+
+                    item.hidden = !matches;
+
+                    if (matches && tokens.length) {
+                        if (!item.open) {
+                            item.open = true;
+                            item.dataset.searchOpened = '1';
+                        }
+                    } else if (item.dataset.searchOpened === '1') {
+                        item.open = false;
+                        delete item.dataset.searchOpened;
+                    }
+
+                    if (matches) {
+                        categoryVisible += 1;
+                        visibleItems += 1;
+                    }
+                });
+
+                category.hidden = categoryVisible === 0;
+            });
+
+            noResults.hidden = visibleItems !== 0;
+        }
+
+        searchInput.addEventListener('input', updateFilter);
+        updateFilter();
     })();
 </script>
 <?php get_footer(); ?>
